@@ -35,6 +35,16 @@ const statusColors: Record<string, number> = {
   stopped: 0x64748b
 };
 
+// Agent sheets contain idle, working, blocked, and paused frames in that order.
+const statusFrames: Record<string, number> = {
+  idle: 0,
+  stopped: 0,
+  working: 1,
+  blocked: 2,
+  error: 2,
+  paused: 3
+};
+
 function textureForRole(role: string | undefined, id: string): string {
   const value = `${role ?? ''} ${id}`.toLowerCase();
   if (value.includes('tester') || value.includes('test')) return 'agent-tester';
@@ -95,6 +105,7 @@ export class OfficeScene extends Phaser.Scene {
       const target = toCanvasPosition(agent.zone, slot);
       const color = statusColors[agent.status] ?? zoneColors[agent.zone];
       const texture = textureForRole(agent.role, agent.id);
+      const frame = statusFrames[agent.status] ?? 0;
       const existing = this.views.get(agent.id);
 
       if (!existing) {
@@ -102,7 +113,7 @@ export class OfficeScene extends Phaser.Scene {
           .setStrokeStyle(2, 0xfacc15, 1)
           .setFillStyle(0x000000, 0)
           .setVisible(this.selectedAgentId === agent.id);
-        const body = this.add.sprite(0, 0, texture, 0).setOrigin(0.5, 1);
+        const body = this.add.sprite(0, 0, texture, 0).setOrigin(0.5, 1).setFrame(frame);
         const label = this.add.text(0, -52, agent.name, {
           color: '#e2e8f0',
           fontFamily: 'system-ui, sans-serif',
@@ -125,7 +136,7 @@ export class OfficeScene extends Phaser.Scene {
         container.on('pointerup', () => this.onAgentSelected(agent.id));
         this.views.set(agent.id, { container, body, outline, label, marker });
       } else {
-        existing.body.setTexture(texture, 0);
+        existing.body.setTexture(texture).setFrame(frame);
         existing.label.setText(agent.name);
         existing.marker.setText(agent.status.toUpperCase());
         existing.marker.setBackgroundColor(toHexColor(color));
