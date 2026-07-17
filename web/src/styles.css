@@ -27,8 +27,8 @@ h2 { color: #f8fafc; font-size: 24px; }
 .workspace { max-width: 1300px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 290px); gap: 18px; align-items: start; }
 .map-panel, .inspector { border: 1px solid #1e293b; border-radius: 16px; background: #0d1726; box-shadow: 0 20px 60px rgb(2 6 23 / .35); }
 .map-panel { min-width: 0; padding: 14px; }
-.office-map { width: 100%; min-height: 400px; aspect-ratio: 1.5; overflow: hidden; border-radius: 10px; background: #0f172a; }
-.office-map canvas { display: block; width: 100% !important; height: 100% !important; }
+.office-map { width: 100%; min-height: 400px; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 10px; background: #0f172a; }
+.office-map canvas { display: block; width: 100% !important; height: 100% !important; image-rendering: pixelated; }
 .map-hint { margin: 11px 5px 0; color: #64748b; font-size: 12px; }
 .desk-notice { margin: 5px 5px 0; color: #ffd37a; font-size: 11px; }
 .inspector { min-height: 240px; padding: 20px; }

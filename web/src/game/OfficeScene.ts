@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { toCanvasPosition } from './positions.js';
+import { officeAssetManifest, officeCanvas } from './office-assets.js';
 import type { Zone } from '../../../server/protocol.js';
 
 export type OfficeAgent = {
@@ -44,7 +45,15 @@ export class OfficeScene extends Phaser.Scene {
     this.onEmptyDeskSelected = onEmptyDeskSelected;
   }
 
+  preload(): void {
+    this.load.image('office-background', officeAssetManifest.background);
+    this.load.image('agent-builder', officeAssetManifest.agents.builder);
+    this.load.image('agent-tester', officeAssetManifest.agents.tester);
+    this.load.image('agent-documenter', officeAssetManifest.agents.documenter);
+  }
+
   create(): void {
+    this.add.image(officeCanvas.width / 2, officeCanvas.height / 2, 'office-background').setOrigin(0.5);
     this.drawOffice();
     this.updateAgents(this.pendingAgents);
   }
@@ -98,46 +107,19 @@ export class OfficeScene extends Phaser.Scene {
 
   private drawOffice(): void {
     this.cameras.main.setBackgroundColor('#0f172a');
-    const graphics = this.add.graphics();
-    graphics.fillStyle(0x172554, 1).fillRoundedRect(25, 35, 510, 325, 18);
-    graphics.fillStyle(0x431407, 1).fillRoundedRect(35, 405, 205, 145, 18);
-    graphics.fillStyle(0x2e1065, 1).fillRoundedRect(270, 405, 300, 145, 18);
-    graphics.fillStyle(0x450a0a, 1).fillRoundedRect(620, 35, 245, 180, 18);
-    graphics.lineStyle(1, 0x334155, 0.8).strokeRoundedRect(25, 35, 510, 325, 18);
-    graphics.strokeRoundedRect(35, 405, 205, 145, 18);
-    graphics.strokeRoundedRect(270, 405, 300, 145, 18);
-    graphics.strokeRoundedRect(620, 35, 245, 180, 18);
+    // The pixel-art background owns the room composition. Keep only the
+    // interactive empty-desk hit area from the previous drawn layout.
+    if (!this.onEmptyDeskSelected || typeof this.add.zone !== 'function') return;
 
-    this.add.text(48, 52, 'DESK', this.headingStyle());
-    this.add.text(48, 103, 'EMPTY DESK · click or press D to assign', { color: '#6ee7c1', fontSize: '11px' });
-    this.add.text(52, 420, 'COFFEE', this.headingStyle());
-    this.add.text(287, 420, 'LOUNGE', this.headingStyle());
-    this.add.text(638, 50, 'ATTENTION', this.headingStyle());
-    this.add.text(48, 83, 'Focused workstations', { color: '#93c5fd', fontSize: '13px' });
-    this.add.text(52, 451, 'Reset and recharge', { color: '#fdba74', fontSize: '13px' });
-    this.add.text(287, 451, 'Shared space', { color: '#d8b4fe', fontSize: '13px' });
-    this.add.text(638, 81, 'Needs a human', { color: '#fca5a5', fontSize: '13px' });
-
-    if (this.onEmptyDeskSelected) {
-      const deskHitArea = this.add.zone(280, 230, 460, 235)
-        .setInteractive({ useHandCursor: true })
-        .setDepth(-1);
-      deskHitArea.on('pointerup', this.onEmptyDeskSelected);
-      this.input.keyboard?.on('keydown-D', this.onEmptyDeskSelected);
-      this.events.once('shutdown', () => {
-        deskHitArea.destroy();
-        this.input.keyboard?.off('keydown-D', this.onEmptyDeskSelected);
-      });
-    }
-  }
-
-  private headingStyle(): Phaser.Types.GameObjects.Text.TextStyle {
-    return {
-      color: '#f8fafc',
-      fontFamily: 'system-ui, sans-serif',
-      fontSize: '16px',
-      fontStyle: 'bold'
-    };
+    const deskHitArea = this.add.zone(280, 230, 460, 235)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(-1);
+    deskHitArea.on('pointerup', this.onEmptyDeskSelected);
+    this.input.keyboard?.on('keydown-D', this.onEmptyDeskSelected);
+    this.events.once('shutdown', () => {
+      deskHitArea.destroy();
+      this.input.keyboard?.off('keydown-D', this.onEmptyDeskSelected);
+    });
   }
 }
 
@@ -148,11 +130,11 @@ export function createOfficeGame(
 ): Phaser.Game {
   return new Phaser.Game({
     type: Phaser.AUTO,
-    width: 900,
-    height: 600,
+    width: officeCanvas.width,
+    height: officeCanvas.height,
     parent,
     backgroundColor: '#0f172a',
-    render: { antialias: true, pixelArt: false },
+    render: { antialias: false, pixelArt: true },
     scene: new OfficeScene(onAgentSelected, onEmptyDeskSelected),
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }
   });
