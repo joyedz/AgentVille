@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Game } from 'phaser';
 import { connect, type ServerMessage } from './api.js';
 import { createOfficeGame, type OfficeAgent } from './game/OfficeScene.js';
@@ -66,7 +66,6 @@ export function App() {
     scene?.updateAgents?.(agents);
   }, [agents]);
 
-  const selected = useMemo(() => agents.find((agent) => agent.id === selectedId), [agents, selectedId]);
   const connectionLabel = connection === 'live' ? 'LIVE' : connection.toUpperCase();
 
   return (
@@ -89,20 +88,9 @@ export function App() {
           <p className="map-hint">Select an agent on the map to inspect their current state.</p>
         </div>
         <aside className="inspector-placeholder">
-          {selected ? (
-            <>
-              <p className="eyebrow">SELECTED AGENT</p>
-              <h2>{selected.name}</h2>
-              <p className="agent-role">{selected.role ?? 'Agent'} · {selected.status}</p>
-              <p>{selected.summary ?? selected.message ?? 'Inspector controls arrive in the next task.'}</p>
-            </>
-          ) : (
-            <>
-              <p className="eyebrow">INSPECTOR</p>
-              <h2>Select an agent</h2>
-              <p>Choose a moving agent from the office map to see their latest checkpoint.</p>
-            </>
-          )}
+          <p className="eyebrow">INSPECTOR</p>
+          <h2>Select an agent</h2>
+          <p>Inspector controls arrive in the next task.</p>
         </aside>
       </section>
     </main>

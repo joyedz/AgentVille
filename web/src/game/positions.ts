@@ -25,5 +25,6 @@ const positions: Record<Zone, readonly CanvasPosition[]> = {
 export function toCanvasPosition(zone: Zone, slot: number): CanvasPosition {
   const seats = positions[zone];
   if (!seats) return { x: 0, y: 0 };
-  return seats[Math.max(0, slot)] ?? seats[seats.length - 1] ?? { x: 0, y: 0 };
+  const index = ((slot % seats.length) + seats.length) % seats.length;
+  return seats[index] ?? { x: 0, y: 0 };
 }
