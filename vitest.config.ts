@@ -3,6 +3,23 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   root: '.',
   test: {
-    environment: 'node'
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'server',
+          include: ['server/**/*.test.ts'],
+          environment: 'node'
+        }
+      },
+      {
+        extends: true,
+        test: {
+          name: 'web',
+          include: ['web/**/*.test.tsx'],
+          environment: 'jsdom'
+        }
+      }
+    ]
   }
 });

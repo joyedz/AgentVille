@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["server", "web", "vite.config.ts"]
+  "include": ["server", "web", "vite.config.ts", "vitest.config.ts"]
 }
