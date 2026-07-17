@@ -19,6 +19,14 @@ export default defineConfig({
           include: ['web/**/*.test.{ts,tsx}'],
           environment: 'jsdom'
         }
+      },
+      {
+        extends: true,
+        test: {
+          name: 'seed-project',
+          include: ['seed-project/**/*.test.ts'],
+          environment: 'node'
+        }
       }
     ]
   }
