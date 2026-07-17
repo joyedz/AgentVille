@@ -52,7 +52,7 @@ export class CommandQueue {
     );
     if (database) {
       const rows = database.prepare(
-        'SELECT id, agent_id, type, payload, status, created_at FROM commands ORDER BY created_at, rowid'
+        'SELECT id, agent_id, type, payload, status, created_at FROM commands ORDER BY rowid ASC'
       ).all() as unknown as CommandRow[];
       for (const row of rows) {
         const command = decodeRow(row);
@@ -72,9 +72,7 @@ export class CommandQueue {
       status: 'pending',
       createdAt: new Date().toISOString()
     };
-    this.byId.set(command.id, command);
-    this.addPending(command);
-    this.insertStatement?.run(
+    const result = this.insertStatement?.run(
       command.id,
       command.agentId,
       command.type,
@@ -82,6 +80,21 @@ export class CommandQueue {
       command.status,
       command.createdAt
     );
+
+    if (this.database && result && Number(result.changes) === 0) {
+      const canonical = this.database.prepare(
+        'SELECT id, agent_id, type, payload, status, created_at FROM commands WHERE id = ?'
+      ).get(command.id) as unknown as CommandRow | undefined;
+      if (canonical) {
+        const saved = decodeRow(canonical);
+        this.byId.set(saved.id, saved);
+        if (saved.status === 'pending') this.addPending(saved);
+        return saved;
+      }
+    }
+
+    this.byId.set(command.id, command);
+    this.addPending(command);
     return command;
   }
 
