@@ -17,6 +17,7 @@ export type ClientState = {
   mode: 'mock' | 'codex';
   agents: Agent[];
   commands?: Command[];
+  notice?: string;
 };
 
 export function reduceMessage(state: ClientState, message: ServerMessage): { state: ClientState; valid: boolean } {
@@ -62,6 +63,13 @@ export function reduceMessage(state: ClientState, message: ServerMessage): { sta
     if (index < 0) commands.push(parsed.data);
     else commands[index] = parsed.data;
     return { state: { ...state, commands }, valid: true };
+  }
+  if (message.type === 'runner.error') {
+    const data = message.data;
+    if (!data || typeof data !== 'object' || typeof (data as { message?: unknown }).message !== 'string') {
+      return { state, valid: false };
+    }
+    return { state: { ...state, notice: (data as { message: string }).message }, valid: true };
   }
   return { state, valid: true };
 }
@@ -138,6 +146,7 @@ export function App() {
           <span className={`pill pill-connection pill-${connection}`}>{connectionLabel}</span>
         </div>
       </header>
+      {clientState.notice && <p className="runner-notice" role="status">{clientState.notice}</p>}
       <section className="workspace">
         <div className="map-panel">
           <div ref={mapRef} className="office-map" aria-label="Agentville office map" />

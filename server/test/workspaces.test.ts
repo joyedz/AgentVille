@@ -1,6 +1,6 @@
 import { access, rm, writeFile } from 'node:fs/promises';
 import { expect, it } from 'vitest';
-import { resetWorkspace } from '../workspaces.js';
+import { ensureWorkspace, resetWorkspace } from '../workspaces.js';
 
 it('resets an agent workspace from the seed project', async () => {
   const agentId = `test-${Date.now()}`;
@@ -20,4 +20,20 @@ it('resets an agent workspace from the seed project', async () => {
 
 it('rejects traversal-shaped agent ids before touching the filesystem', async () => {
   await expect(resetWorkspace('../escape')).rejects.toThrow(/agentId/);
+});
+
+it('preserves an existing workspace while recreating a missing one', async () => {
+  const agentId = `ensure-${Date.now()}`;
+  const target = await resetWorkspace(agentId);
+
+  try {
+    await writeFile(`${target}/keep.txt`, 'keep me');
+    await expect(ensureWorkspace(agentId)).resolves.toBe(target);
+    await expect(access(`${target}/keep.txt`)).resolves.toBeUndefined();
+    await rm(target, { recursive: true, force: true });
+    await expect(ensureWorkspace(agentId)).resolves.toBe(target);
+    await expect(access(`${target}/package.json`)).resolves.toBeUndefined();
+  } finally {
+    await rm(target, { recursive: true, force: true });
+  }
 });

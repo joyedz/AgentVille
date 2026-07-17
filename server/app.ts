@@ -12,7 +12,7 @@ import { recoverActiveAgent } from './runner.js';
 import { createSeedAgents } from './seed.js';
 import { createStore, type AgentStore, type StoreMode } from './store.js';
 import { openDatabase } from './db.js';
-import { resetWorkspace, workspacePath } from './workspaces.js';
+import { ensureWorkspace, workspacePath } from './workspaces.js';
 
 export type BuildAppOptions = {
   database?: string | DatabaseSync;
@@ -126,8 +126,7 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
     loopStarted = true;
     if (mode === 'codex') {
       await Promise.all([...runners.keys()]
-        .filter((agentId) => !persistedAgentIds.has(agentId))
-        .map((agentId) => resetWorkspace(agentId)));
+        .map((agentId) => ensureWorkspace(agentId)));
     }
     await advanceMockAgents();
     // Keep the seeded Builder at its deterministic approval gate so the

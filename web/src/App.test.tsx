@@ -55,6 +55,13 @@ describe('reduceMessage', () => {
     expect(result.valid).toBe(false);
     expect(result.state).toEqual(initial);
   });
+
+  it('surfaces runner startup errors as a user-visible notice', () => {
+    const result = reduceMessage(initial, { type: 'runner.error', data: { message: 'Codex could not start' } });
+
+    expect(result.valid).toBe(true);
+    expect(result.state.notice).toBe('Codex could not start');
+  });
 });
 
 it('renders the selected inspector and dispatches a command', async () => {

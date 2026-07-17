@@ -66,3 +66,22 @@ it('extracts changed files, test summary, and a log tail from Codex output', asy
     logTail: expect.arrayContaining(['implemented'])
   }));
 });
+
+it('restarts Codex after a paused in-flight run settles and resumes', async () => {
+  let settleFirst!: (result: { code: number; stdout: string; stderr: string }) => void;
+  const execute = vi.fn()
+    .mockImplementationOnce(() => new Promise((resolve) => { settleFirst = resolve; }))
+    .mockResolvedValueOnce({ code: 0, stdout: 'resumed', stderr: '' });
+  const runner = new CodexRunner('a1', 'C:/tmp/agent-a1', execute, vi.fn());
+
+  const firstRun = runner.runNext();
+  await Promise.resolve();
+  await runner.accept({ type: 'pause' });
+  await runner.accept({ type: 'resume' });
+  expect(execute).toHaveBeenCalledTimes(1);
+
+  settleFirst({ code: 0, stdout: 'paused', stderr: '' });
+  await firstRun;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(execute).toHaveBeenCalledTimes(2);
+});

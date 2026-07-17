@@ -19,6 +19,7 @@ export class CodexRunner {
   private executing = false;
   private paused = false;
   private stopped = false;
+  private resumeRequested = false;
   private taskTitle?: string;
   private currentTaskId?: string;
   private readonly instructions: string[] = [];
@@ -63,8 +64,11 @@ export class CodexRunner {
       const message = error instanceof Error ? error.message : String(error);
       this.emit({ agentId: this.agentId, currentTaskId: this.currentTaskId, status: 'error', message });
     } finally {
+      const shouldResume = this.resumeRequested && !this.stopped;
+      this.resumeRequested = false;
       this.executing = false;
       this.working = false;
+      if (shouldResume) queueMicrotask(() => void this.runNext());
     }
   }
 
@@ -80,7 +84,12 @@ export class CodexRunner {
       case 'resume':
         if (this.stopped || !this.paused) return { ok: false, error: 'resume is only valid while paused' };
         this.paused = false;
-        this.emit({ agentId: this.agentId, currentTaskId: this.currentTaskId, status: 'working', checkpoint: 'implement' });
+        if (this.executing) {
+          this.resumeRequested = true;
+          this.emit({ agentId: this.agentId, currentTaskId: this.currentTaskId, status: 'working', checkpoint: 'implement' });
+        } else {
+          void this.runNext();
+        }
         return { ok: true };
       case 'stop':
         if (this.stopped) return { ok: false, error: 'runner is already stopped' };

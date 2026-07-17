@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { access, cp, mkdir, rm, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, sep } from 'node:path';
 
@@ -26,4 +26,16 @@ export async function resetWorkspace(agentId: string) {
     filter: (source) => !source.includes('node_modules')
   });
   return target;
+}
+
+/** Return an existing workspace unchanged, or create a fresh seed copy when missing. */
+export async function ensureWorkspace(agentId: string): Promise<string> {
+  const target = workspacePath(agentId);
+  try {
+    if ((await stat(target)).isDirectory()) return target;
+  } catch {
+    // A missing workspace is created below.
+  }
+  await access(seedRoot);
+  return resetWorkspace(agentId);
 }

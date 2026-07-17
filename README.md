@@ -5,14 +5,14 @@ Agentville is a local mission-control UI for three bounded coding agents. Mock m
 ## Run
 
 1. `npm install`
-2. Copy `.env.example` to `.env` and leave `AGENTVILLE_MODE=mock`.
+2. Set `AGENTVILLE_MODE=mock` in the shell (`$env:AGENTVILLE_MODE='mock'` in PowerShell or `export AGENTVILLE_MODE=mock` in POSIX shells). `.env.example` documents the same values; the dev script does not auto-load `.env`.
 3. Run `npm run dev`, then open the Vite URL shown in the terminal.
 
 The server listens on `127.0.0.1:8787`; Vite serves the UI on `127.0.0.1:5173` and proxies `/api` and `/ws`.
 
 ## Real Codex mode
 
-Run `codex --version` and a small `codex exec` task first. Then set `AGENTVILLE_MODE=codex` and restart the dev server. Each agent receives a fresh copy under `.agentville/workspaces/<agent-id>` and the adapter reports the process output and exit status. Pause and stop are safe at checkpoint boundaries; a running child process is never duplicated by resume.
+Run `codex --version` and a small `codex exec` task first. Then set `AGENTVILLE_MODE=codex` in the shell and restart the dev server. Each agent receives a fresh copy under `.agentville/workspaces/<agent-id>` and the adapter reports the process output and exit status. Pause and stop are safe at checkpoint boundaries; a running child process is never duplicated by resume.
 
 If Codex cannot start, the UI receives an actionable error event and you can return to mock mode by setting `AGENTVILLE_MODE=mock`.
 

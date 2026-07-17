@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { access, rm } from 'node:fs/promises';
 import { buildApp } from '../app.js';
 import { openDatabase } from '../db.js';
 import { createStore } from '../store.js';
 import { createSeedAgents } from '../seed.js';
 import { recoverActiveAgent } from '../runner.js';
+import { workspacePath } from '../workspaces.js';
 
 describe('startup recovery', () => {
   const apps: Array<Awaited<ReturnType<typeof buildApp>>> = [];
@@ -48,5 +50,20 @@ describe('startup recovery', () => {
       command: 'codex',
       cwd: expect.stringContaining('.agentville')
     }));
+  });
+
+  it('recreates a missing persisted workspace without requiring a fresh agent', async () => {
+    const database = openDatabase(':memory:');
+    createStore(createSeedAgents(), 'codex', database);
+    const target = workspacePath('builder');
+    await rm(target, { recursive: true, force: true });
+
+    const app = buildApp({ database, mode: 'codex', execute: vi.fn() });
+    apps.push(app);
+    await app.close();
+    apps.splice(apps.indexOf(app), 1);
+
+    await expect(access(`${target}/package.json`)).resolves.toBeUndefined();
+    await rm(target, { recursive: true, force: true });
   });
 });
