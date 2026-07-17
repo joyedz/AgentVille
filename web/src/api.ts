@@ -18,12 +18,14 @@ export function connect(
   onMessage: (message: ServerMessage) => void,
   onStatus?: (status: 'connecting' | 'open' | 'closed' | 'error') => void
 ): Connection {
+  let active = true;
   onStatus?.('connecting');
   const socket = new WebSocket(websocketUrl());
-  socket.addEventListener('open', () => onStatus?.('open'));
-  socket.addEventListener('close', () => onStatus?.('closed'));
-  socket.addEventListener('error', () => onStatus?.('error'));
+  socket.addEventListener('open', () => { if (active) onStatus?.('open'); });
+  socket.addEventListener('close', () => { if (active) onStatus?.('closed'); });
+  socket.addEventListener('error', () => { if (active) onStatus?.('error'); });
   socket.addEventListener('message', (event) => {
+    if (!active) return;
     try {
       const parsed = JSON.parse(typeof event.data === 'string' ? event.data : String(event.data)) as ServerMessage;
       if (parsed && typeof parsed.type === 'string') onMessage(parsed);
@@ -33,7 +35,11 @@ export function connect(
   });
   return {
     socket,
-    close: () => socket.close()
+    close: () => {
+      if (!active) return;
+      active = false;
+      if (socket.readyState !== 3 && socket.readyState !== 2) socket.close();
+    }
   };
 }
 

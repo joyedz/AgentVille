@@ -29,8 +29,9 @@ export function reduceMessage(state: ClientState, message: ServerMessage): { sta
       if (parsed.success) agents.push(parsed.data);
       else valid = false;
     }
+    if (!valid) return { state, valid: false };
     const mode = input.mode === 'mock' || input.mode === 'codex' ? input.mode : state.mode;
-    return { state: { mode, agents }, valid };
+    return { state: { mode, agents }, valid: true };
   }
   if (message.type === 'agent.updated') {
     const parsed = agentSchema.safeParse(message.data);
