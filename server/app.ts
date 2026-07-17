@@ -35,7 +35,9 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
   const store = createStore(createSeedAgents(), mode, database);
   const clients = new Set<ClientSocket>();
   const runners = new Map<string, Runner>();
+  const dispatchChains = new Map<string, Promise<void>>();
   const checkpointPlan = ['inspect', 'approval', 'implement'];
+  let closing = false;
 
   const broadcast = (message: unknown): void => {
     const encoded = JSON.stringify(message);
@@ -53,6 +55,8 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
       status,
       zone: assignZone(status, 0),
       checkpoint: event.checkpoint ?? current.checkpoint,
+      message: event.message ?? current.message,
+      summary: event.summary ?? current.summary,
       lastUpdated: new Date().toISOString()
     };
     store.updateAgent(updated);
@@ -77,7 +81,14 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
   };
   app.decorate('advanceMockAgents', advanceMockAgents);
   app.decorate('startMockLoop', startMockLoop);
-  void startMockLoop();
+  const startupPromise = startMockLoop().catch((error: unknown) => {
+    if (!closing) {
+      broadcast({
+        type: 'runner.error',
+        data: { message: error instanceof Error ? error.message : String(error) }
+      });
+    }
+  });
 
   const dispatchAgent = async (agentId: string): Promise<void> => {
     const runner = runners.get(agentId);
@@ -87,7 +98,17 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
       if (!next) return;
       broadcast({ type: 'command.updated', data: next });
       try {
-        await runner.accept(next);
+        const result = await runner.accept(next);
+        if (!result.ok) {
+          const failed = store.updateCommandStatus(next.id, 'failed');
+          if (failed) {
+            broadcast({
+              type: 'command.updated',
+              data: { ...failed, error: result.error, message: result.message, summary: result.summary }
+            });
+          }
+          continue;
+        }
         const done = store.updateCommandStatus(next.id, 'done');
         if (done) broadcast({ type: 'command.updated', data: done });
       } catch (error) {
@@ -100,6 +121,16 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
         }
       }
     }
+  };
+
+  const enqueueDispatch = (agentId: string): Promise<void> => {
+    const previous = dispatchChains.get(agentId) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(() => dispatchAgent(agentId));
+    dispatchChains.set(agentId, current);
+    void current.finally(() => {
+      if (dispatchChains.get(agentId) === current) dispatchChains.delete(agentId);
+    }).catch(() => undefined);
+    return current;
   };
 
   app.register(cors, { origin: true });
@@ -116,7 +147,7 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
 
     const command = store.enqueue({ agentId: agentId!, ...parsed.data });
     broadcast({ type: 'command.updated', data: command });
-    if (command.status === 'pending') await dispatchAgent(agentId!);
+    if (command.status === 'pending') await enqueueDispatch(agentId!);
     return reply.code(202).send(store.getCommand(command.id) ?? command);
   });
 
@@ -133,6 +164,10 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
   });
 
   app.addHook('onClose', async () => {
+    closing = true;
+    await startupPromise;
+    await Promise.allSettled([...dispatchChains.values()]);
+    dispatchChains.clear();
     clients.clear();
     store.close();
   });

@@ -41,6 +41,8 @@ export const agentSchema = z.object({
   y: z.number(),
   currentTaskId: nonEmptyString.optional(),
   checkpoint: nonEmptyString.optional(),
+  message: z.string().optional(),
+  summary: z.string().optional(),
   lastUpdated: nonEmptyString
 });
 

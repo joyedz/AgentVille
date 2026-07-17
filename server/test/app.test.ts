@@ -34,6 +34,19 @@ describe('mock control plane app', () => {
     expect(response.json()).toMatchObject({ id: 'c1', agentId: 'builder', type: 'pause' });
   });
 
+  it('marks commands that the runner cannot accept as failed', async () => {
+    const app = buildApp({ database: ':memory:', mode: 'mock' });
+    apps.push(app);
+
+    const stop = await app.inject({ method: 'POST', url: '/api/agents/builder/commands', payload: { id: 'stop-1', type: 'stop' } });
+    expect(stop.json()).toMatchObject({ id: 'stop-1', status: 'done' });
+    const pause = await app.inject({ method: 'POST', url: '/api/agents/builder/commands', payload: { id: 'pause-after-stop', type: 'pause' } });
+    expect(pause.json()).toMatchObject({ id: 'pause-after-stop', status: 'failed' });
+
+    const state = (await app.inject({ method: 'GET', url: '/api/state' })).json();
+    expect(state.agents.find((agent: { id: string }) => agent.id === 'builder')).toMatchObject({ status: 'stopped' });
+  });
+
   it('sends the initial state snapshot over WebSocket', async () => {
     const app = buildApp({ database: ':memory:', mode: 'mock' });
     apps.push(app);
