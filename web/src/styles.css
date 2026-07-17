@@ -46,12 +46,14 @@ h2 { color: #f8fafc; font-size: 24px; }
 .agent-meta dd { margin: 5px 0 0; overflow: hidden; color: #dce8f2; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .inspector-summary, .inspector-section, .command-list, .log-tail { margin-top: 15px; padding-top: 14px; border-top: 1px solid #1e293b; }
 .inspector-summary p:last-child { margin: 7px 0 0; color: #b8c7d4; font-family: Inter, ui-sans-serif, sans-serif; font-size: 13px; line-height: 1.5; }
+.inspector-summary .message-label { margin-top: 14px; }
 .file-list { margin: 8px 0 0; padding: 0; list-style: none; color: #9cebd0; font-size: 11px; }
 .file-list li { overflow: hidden; padding: 4px 0; text-overflow: ellipsis; white-space: nowrap; }
 .file-list li::before { margin-right: 6px; color: #52738e; content: '↳'; }
 .inspector-actions { display: flex; gap: 8px; margin-top: 18px; }
 button { cursor: pointer; }
 button:disabled { cursor: wait; opacity: .5; }
+button:focus-visible, input:focus-visible { outline: 2px solid #76f3c4; outline-offset: 2px; }
 .button-primary, .button-danger, .button-secondary { min-height: 34px; padding: 0 12px; border-radius: 5px; border: 1px solid; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
 .button-primary { color: #041b18; border-color: #61e6b5; background: #76f3c4; }
 .button-primary:hover:not(:disabled) { background: #a0ffda; }

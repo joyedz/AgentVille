@@ -10,6 +10,7 @@ export type InspectorAgent = {
   zone: Zone;
   checkpoint?: string;
   currentTaskId?: string;
+  currentTaskTitle?: string;
   message?: string;
   summary?: string;
   changedFiles?: string[];
@@ -53,6 +54,7 @@ export function Inspector({ agent, commands = [], onCommand }: InspectorProps) {
 
   const primaryAction = actionFor(agent.status);
   const canAssign = primaryAction?.type === 'assign_task';
+  const currentTaskTitle = agent.currentTaskTitle ?? agentCommands.find((command) => command.id === agent.currentTaskId)?.payload?.taskTitle;
 
   async function dispatch(command: CommandBody): Promise<void> {
     if (pendingType) return;
@@ -91,9 +93,13 @@ export function Inspector({ agent, commands = [], onCommand }: InspectorProps) {
         <div><dt>ZONE</dt><dd>{agent.zone}</dd></div>
         {agent.checkpoint && <div><dt>CHECKPOINT</dt><dd>{agent.checkpoint}</dd></div>}
         <div><dt>TASK ID</dt><dd>{agent.currentTaskId ?? '—'}</dd></div>
+        {currentTaskTitle && <div><dt>TASK TITLE</dt><dd>{currentTaskTitle}</dd></div>}
       </dl>
 
-      {(agent.summary || agent.message) && <section className="inspector-summary"><p className="section-label">MISSION NOTE</p><p>{agent.summary ?? agent.message}</p></section>}
+      {(agent.summary || agent.message) && <section className="inspector-summary">
+        {agent.summary && <><p className="section-label">SUMMARY</p><p>{agent.summary}</p></>}
+        {agent.message && <><p className="section-label message-label">MESSAGE</p><p>{agent.message}</p></>}
+      </section>}
 
       {agent.changedFiles && agent.changedFiles.length > 0 && <section className="inspector-section"><p className="section-label">CHANGED FILES</p><ul className="file-list">{agent.changedFiles.map((file) => <li key={file}>{file}</li>)}</ul></section>}
 

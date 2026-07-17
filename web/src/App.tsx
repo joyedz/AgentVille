@@ -6,7 +6,7 @@ import { createOfficeGame, type OfficeAgent } from './game/OfficeScene.js';
 import { Inspector, type InspectorAgent } from './components/Inspector.js';
 import type { CommandBody } from './components/AssignTaskDialog.js';
 
-type Agent = OfficeAgent & Pick<ProtocolAgent, 'lastUpdated' | 'message' | 'summary' | 'x' | 'y'>;
+type Agent = OfficeAgent & Pick<ProtocolAgent, 'lastUpdated' | 'message' | 'summary' | 'x' | 'y' | 'currentTaskId' | 'currentTaskTitle' | 'checkpoint' | 'changedFiles' | 'logTail'>;
 
 type Snapshot = {
   mode?: 'mock' | 'codex';

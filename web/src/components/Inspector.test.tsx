@@ -41,3 +41,14 @@ it('renders failed command feedback from command metadata', () => {
   }]} />);
   expect(screen.getByText('Agent is already paused')).toBeTruthy();
 });
+
+it('guards against duplicate command submissions while pending', () => {
+  let resolveCommand!: () => void;
+  const onCommand = vi.fn(() => new Promise<void>((resolve) => { resolveCommand = resolve; }));
+  render(<Inspector agent={workingAgent} onCommand={onCommand} />);
+  const pauseButton = screen.getAllByRole('button', { name: 'Pause' }).at(-1)!;
+  fireEvent.click(pauseButton);
+  fireEvent.click(pauseButton);
+  expect(onCommand).toHaveBeenCalledTimes(1);
+  resolveCommand();
+});

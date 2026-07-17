@@ -40,9 +40,12 @@ export const agentSchema = z.object({
   x: z.number(),
   y: z.number(),
   currentTaskId: nonEmptyString.optional(),
+  currentTaskTitle: nonEmptyString.optional(),
   checkpoint: nonEmptyString.optional(),
   message: z.string().optional(),
   summary: z.string().optional(),
+  changedFiles: z.array(nonEmptyString).optional(),
+  logTail: z.array(z.string()).optional(),
   lastUpdated: nonEmptyString
 });
 
