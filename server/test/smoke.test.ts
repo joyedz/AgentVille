@@ -5,7 +5,7 @@ test('buildApp is exported from the server app module', async () => {
 
   expect(typeof appModule.buildApp).toBe('function');
 
-  const app = appModule.buildApp();
+  const app = appModule.buildApp({ database: ':memory:', mode: 'mock' });
   expect(typeof app.listen).toBe('function');
   expect(typeof app.close).toBe('function');
 
