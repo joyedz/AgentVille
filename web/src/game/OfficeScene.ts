@@ -13,8 +13,10 @@ export type OfficeAgent = {
 
 type AgentView = {
   container: Phaser.GameObjects.Container;
-  body: Phaser.GameObjects.Arc;
+  body: Phaser.GameObjects.Sprite;
+  outline: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
+  marker: Phaser.GameObjects.Text;
 };
 
 const zoneColors: Record<Zone, number> = {
@@ -33,11 +35,23 @@ const statusColors: Record<string, number> = {
   stopped: 0x64748b
 };
 
+function textureForRole(role: string | undefined, id: string): string {
+  const value = `${role ?? ''} ${id}`.toLowerCase();
+  if (value.includes('tester') || value.includes('test')) return 'agent-tester';
+  if (value.includes('documenter') || value.includes('docs') || value.includes('writer')) return 'agent-documenter';
+  return 'agent-builder';
+}
+
+function toHexColor(color: number): string {
+  return `#${color.toString(16).padStart(6, '0')}`;
+}
+
 export class OfficeScene extends Phaser.Scene {
   private readonly onAgentSelected: (agentId: string) => void;
   private readonly onEmptyDeskSelected?: () => void;
   private readonly views = new Map<string, AgentView>();
   private pendingAgents: OfficeAgent[] = [];
+  private selectedAgentId: string | null = null;
 
   constructor(onAgentSelected: (agentId: string) => void, onEmptyDeskSelected?: () => void) {
     super({ key: 'OfficeScene' });
@@ -47,9 +61,12 @@ export class OfficeScene extends Phaser.Scene {
 
   preload(): void {
     this.load.image('office-background', officeAssetManifest.background);
-    this.load.image('agent-builder', officeAssetManifest.agents.builder);
-    this.load.image('agent-tester', officeAssetManifest.agents.tester);
-    this.load.image('agent-documenter', officeAssetManifest.agents.documenter);
+    this.load.spritesheet('agent-builder', officeAssetManifest.agents.builder, { frameWidth: 32, frameHeight: 48 });
+    this.load.spritesheet('agent-tester', officeAssetManifest.agents.tester, { frameWidth: 32, frameHeight: 48 });
+    this.load.spritesheet('agent-documenter', officeAssetManifest.agents.documenter, { frameWidth: 32, frameHeight: 48 });
+    this.load.image('office-status-markers', officeAssetManifest.markers);
+    this.load.image('office-props', officeAssetManifest.props);
+    this.load.image('office-nameplates', officeAssetManifest.nameplates);
   }
 
   create(): void {
@@ -77,23 +94,42 @@ export class OfficeScene extends Phaser.Scene {
       slots.set(agent.zone, slot + 1);
       const target = toCanvasPosition(agent.zone, slot);
       const color = statusColors[agent.status] ?? zoneColors[agent.zone];
+      const texture = textureForRole(agent.role, agent.id);
       const existing = this.views.get(agent.id);
 
       if (!existing) {
-        const body = this.add.circle(0, 0, 18, color).setStrokeStyle(2, 0xffffff, 0.9);
-        const label = this.add.text(0, 28, agent.name, {
+        const outline = this.add.rectangle(0, -25, 40, 56)
+          .setStrokeStyle(2, 0xfacc15, 1)
+          .setFillStyle(0x000000, 0)
+          .setVisible(this.selectedAgentId === agent.id);
+        const body = this.add.sprite(0, 0, texture, 0).setOrigin(0.5, 1);
+        const label = this.add.text(0, -52, agent.name, {
           color: '#e2e8f0',
           fontFamily: 'system-ui, sans-serif',
-          fontSize: '12px',
+          fontSize: '11px',
+          backgroundColor: '#0f172acc',
+          padding: { left: 4, right: 4, top: 2, bottom: 2 },
           align: 'center'
-        }).setOrigin(0.5, 0);
-        const container = this.add.container(target.x, target.y, [body, label]);
-        container.setSize(42, 62).setInteractive({ useHandCursor: true });
+        }).setOrigin(0.5, 1);
+        const marker = this.add.text(0, -75, agent.status.toUpperCase(), {
+          color: '#0f172a',
+          backgroundColor: toHexColor(color),
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          fontStyle: 'bold',
+          padding: { left: 4, right: 4, top: 2, bottom: 2 },
+          align: 'center'
+        }).setOrigin(0.5, 1);
+        const container = this.add.container(target.x, target.y, [outline, body, label, marker]);
+        container.setSize(52, 84).setInteractive({ useHandCursor: true });
         container.on('pointerup', () => this.onAgentSelected(agent.id));
-        this.views.set(agent.id, { container, body, label });
+        this.views.set(agent.id, { container, body, outline, label, marker });
       } else {
-        existing.body.setFillStyle(color);
+        existing.body.setTexture(texture, 0);
         existing.label.setText(agent.name);
+        existing.marker.setText(agent.status.toUpperCase());
+        existing.marker.setBackgroundColor(toHexColor(color));
+        existing.outline.setVisible(this.selectedAgentId === agent.id);
         this.tweens.add({
           targets: existing.container,
           x: target.x,
@@ -103,6 +139,12 @@ export class OfficeScene extends Phaser.Scene {
         });
       }
     }
+  }
+
+  /** Keep selection rendering in the scene so React only owns the selected id. */
+  setSelectedAgent(agentId: string | null): void {
+    this.selectedAgentId = agentId;
+    for (const [id, view] of this.views) view.outline.setVisible(id === agentId);
   }
 
   private drawOffice(): void {

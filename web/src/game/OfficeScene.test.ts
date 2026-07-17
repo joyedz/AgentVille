@@ -6,7 +6,7 @@ vi.mock('phaser', () => {
     cameras = { main: { setBackgroundColor: vi.fn() } };
     events = { once: vi.fn() };
     input = { keyboard: { on: vi.fn(), off: vi.fn() } };
-    load = { image: vi.fn() };
+    load = { image: vi.fn(), spritesheet: vi.fn() };
     tweens = { add: vi.fn() };
   }
 
@@ -36,9 +36,12 @@ describe('OfficeScene pixel office background', () => {
     scene.preload();
 
     expect(scene.load.image).toHaveBeenCalledWith('office-background', officeAssetManifest.background);
-    expect(scene.load.image).toHaveBeenCalledWith('agent-builder', officeAssetManifest.agents.builder);
-    expect(scene.load.image).toHaveBeenCalledWith('agent-tester', officeAssetManifest.agents.tester);
-    expect(scene.load.image).toHaveBeenCalledWith('agent-documenter', officeAssetManifest.agents.documenter);
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-builder', officeAssetManifest.agents.builder, { frameWidth: 32, frameHeight: 48 });
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-tester', officeAssetManifest.agents.tester, { frameWidth: 32, frameHeight: 48 });
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-documenter', officeAssetManifest.agents.documenter, { frameWidth: 32, frameHeight: 48 });
+    expect(scene.load.image).toHaveBeenCalledWith('office-status-markers', officeAssetManifest.markers);
+    expect(scene.load.image).toHaveBeenCalledWith('office-props', officeAssetManifest.props);
+    expect(scene.load.image).toHaveBeenCalledWith('office-nameplates', officeAssetManifest.nameplates);
   });
 
   it('adds the office background centered on the fixed pixel canvas', () => {

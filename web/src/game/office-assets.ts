@@ -6,5 +6,8 @@ export const officeAssetManifest = {
     builder: '/assets/office/agent-builder.png',
     tester: '/assets/office/agent-tester.png',
     documenter: '/assets/office/agent-documenter.png'
-  }
+  },
+  markers: '/assets/office/status-markers.png',
+  props: '/assets/office/office-props.png',
+  nameplates: '/assets/office/nameplates.png'
 } as const;

@@ -124,6 +124,11 @@ export function App() {
     scene?.updateAgents?.(agents);
   }, [agents]);
 
+  useEffect(() => {
+    const scene = gameRef.current?.scene.getScene('OfficeScene') as { setSelectedAgent?: (agentId: string | null) => void } | undefined;
+    scene?.setSelectedAgent?.(selectedId);
+  }, [selectedId]);
+
   const connectionLabel = connection === 'live' ? 'LIVE' : connection.toUpperCase();
   const selectedAgent = agents.find((agent) => agent.id === selectedId);
 
