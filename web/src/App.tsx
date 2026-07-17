@@ -4,7 +4,7 @@ import { agentSchema, commandSchema, type Agent as ProtocolAgent, type Command }
 import { connect, sendCommand, type ServerMessage } from './api.js';
 import { createOfficeGame, type OfficeAgent } from './game/OfficeScene.js';
 import { Inspector, type InspectorAgent } from './components/Inspector.js';
-import type { CommandBody } from './components/AssignTaskDialog.js';
+import { AssignTaskDialog, type CommandBody } from './components/AssignTaskDialog.js';
 
 type Agent = OfficeAgent & Pick<ProtocolAgent, 'lastUpdated' | 'message' | 'summary' | 'x' | 'y' | 'currentTaskId' | 'currentTaskTitle' | 'checkpoint' | 'changedFiles' | 'logTail'>;
 
@@ -71,12 +71,26 @@ export function App() {
   const gameRef = useRef<Game | null>(null);
   const [clientState, setClientState] = useState<ClientState>({ mode: 'mock', agents: [], commands: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [deskAssignmentAgentId, setDeskAssignmentAgentId] = useState<string | null>(null);
+  const [deskNotice, setDeskNotice] = useState<string | null>(null);
   const [connection, setConnection] = useState<'connecting' | 'live' | 'closed' | 'error'>('connecting');
   const { agents, mode } = clientState;
+  const agentsRef = useRef<Agent[]>([]);
+  agentsRef.current = agents;
+
+  function handleEmptyDeskSelected(): void {
+    const target = agentsRef.current.find((agent) => agent.status === 'idle' || agent.status === 'stopped');
+    if (!target) {
+      setDeskNotice('No idle crew available. Select an agent to assign a task.');
+      return;
+    }
+    setDeskNotice(null);
+    setDeskAssignmentAgentId(target.id);
+  }
 
   useEffect(() => {
     if (!mapRef.current) return undefined;
-    const game = createOfficeGame(mapRef.current, setSelectedId);
+    const game = createOfficeGame(mapRef.current, setSelectedId, handleEmptyDeskSelected);
     gameRef.current = game;
     const connectionHandle = connect(handleMessage, (status) => {
       setConnection(status === 'open' ? 'live' : status);
@@ -128,9 +142,16 @@ export function App() {
         <div className="map-panel">
           <div ref={mapRef} className="office-map" aria-label="Agentville office map" />
           <p className="map-hint">Select an agent on the map to inspect their current state.</p>
+          {deskNotice && <p className="desk-notice" role="status">{deskNotice}</p>}
         </div>
         <Inspector agent={selectedAgent as InspectorAgent | undefined} commands={clientState.commands} onCommand={handleCommand} />
       </section>
+      {deskAssignmentAgentId && <AssignTaskDialog
+        agentId={deskAssignmentAgentId}
+        open
+        onClose={() => setDeskAssignmentAgentId(null)}
+        onCommand={handleCommand}
+      />}
     </main>
   );
 }

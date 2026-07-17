@@ -3,13 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
   selectAgent: undefined as ((id: string) => void) | undefined,
+  emptyDesk: undefined as (() => void) | undefined,
   emitMessage: undefined as ((message: unknown) => void) | undefined,
   sendCommand: vi.fn()
 }));
 
 vi.mock('./game/OfficeScene.js', () => ({
-  createOfficeGame: vi.fn((_parent: HTMLElement, selectAgent: (id: string) => void) => {
+  createOfficeGame: vi.fn((_parent: HTMLElement, selectAgent: (id: string) => void, emptyDesk: () => void) => {
     harness.selectAgent = selectAgent;
+    harness.emptyDesk = emptyDesk;
     return {
     destroy: vi.fn(),
     scene: { getScene: vi.fn() }
@@ -63,6 +65,9 @@ it('renders the selected inspector and dispatches a command', async () => {
     id: 'a1', name: 'Tester', role: 'Engineer', status: 'working', zone: 'desk', x: 1, y: 1,
     checkpoint: 'implement', currentTaskId: 'task-a1', changedFiles: ['web/src/App.tsx'], logTail: ['ready'],
     summary: 'A focused summary.', message: 'A live message.', lastUpdated: '2026-07-17T00:00:00.000Z'
+  }, {
+    id: 'a2', name: 'Idle', role: 'Tester', status: 'idle', zone: 'lounge', x: 2, y: 2,
+    checkpoint: 'ready', changedFiles: [], logTail: [], lastUpdated: '2026-07-17T00:00:00.000Z'
   }], commands: [] } }));
   expect(reduceMessage({ mode: 'mock', agents: [], commands: [] }, { type: 'state.snapshot', data: { mode: 'mock', agents: [{
     id: 'a1', name: 'Tester', role: 'Engineer', status: 'working', zone: 'desk', x: 1, y: 1,
@@ -76,4 +81,6 @@ it('renders the selected inspector and dispatches a command', async () => {
   expect(screen.getByText('A focused summary.')).toBeTruthy();
   expect(screen.getByText('A live message.')).toBeTruthy();
   expect(screen.getByText('web/src/App.tsx')).toBeTruthy();
+  act(() => harness.emptyDesk?.());
+  expect(await screen.findByRole('dialog')).toBeTruthy();
 });

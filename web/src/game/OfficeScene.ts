@@ -34,12 +34,14 @@ const statusColors: Record<string, number> = {
 
 export class OfficeScene extends Phaser.Scene {
   private readonly onAgentSelected: (agentId: string) => void;
+  private readonly onEmptyDeskSelected?: () => void;
   private readonly views = new Map<string, AgentView>();
   private pendingAgents: OfficeAgent[] = [];
 
-  constructor(onAgentSelected: (agentId: string) => void) {
+  constructor(onAgentSelected: (agentId: string) => void, onEmptyDeskSelected?: () => void) {
     super({ key: 'OfficeScene' });
     this.onAgentSelected = onAgentSelected;
+    this.onEmptyDeskSelected = onEmptyDeskSelected;
   }
 
   create(): void {
@@ -107,6 +109,7 @@ export class OfficeScene extends Phaser.Scene {
     graphics.strokeRoundedRect(620, 35, 245, 180, 18);
 
     this.add.text(48, 52, 'DESK', this.headingStyle());
+    this.add.text(48, 103, 'EMPTY DESK · click or press D to assign', { color: '#6ee7c1', fontSize: '11px' });
     this.add.text(52, 420, 'COFFEE', this.headingStyle());
     this.add.text(287, 420, 'LOUNGE', this.headingStyle());
     this.add.text(638, 50, 'ATTENTION', this.headingStyle());
@@ -114,6 +117,18 @@ export class OfficeScene extends Phaser.Scene {
     this.add.text(52, 451, 'Reset and recharge', { color: '#fdba74', fontSize: '13px' });
     this.add.text(287, 451, 'Shared space', { color: '#d8b4fe', fontSize: '13px' });
     this.add.text(638, 81, 'Needs a human', { color: '#fca5a5', fontSize: '13px' });
+
+    if (this.onEmptyDeskSelected) {
+      const deskHitArea = this.add.zone(280, 230, 460, 235)
+        .setInteractive({ useHandCursor: true })
+        .setDepth(-1);
+      deskHitArea.on('pointerup', this.onEmptyDeskSelected);
+      this.input.keyboard?.on('keydown-D', this.onEmptyDeskSelected);
+      this.events.once('shutdown', () => {
+        deskHitArea.destroy();
+        this.input.keyboard?.off('keydown-D', this.onEmptyDeskSelected);
+      });
+    }
   }
 
   private headingStyle(): Phaser.Types.GameObjects.Text.TextStyle {
@@ -128,7 +143,8 @@ export class OfficeScene extends Phaser.Scene {
 
 export function createOfficeGame(
   parent: HTMLElement,
-  onAgentSelected: (agentId: string) => void
+  onAgentSelected: (agentId: string) => void,
+  onEmptyDeskSelected?: () => void
 ): Phaser.Game {
   return new Phaser.Game({
     type: Phaser.AUTO,
@@ -137,7 +153,7 @@ export function createOfficeGame(
     parent,
     backgroundColor: '#0f172a',
     render: { antialias: true, pixelArt: false },
-    scene: new OfficeScene(onAgentSelected),
+    scene: new OfficeScene(onAgentSelected, onEmptyDeskSelected),
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }
   });
 }

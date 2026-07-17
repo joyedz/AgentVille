@@ -30,6 +30,7 @@ h2 { color: #f8fafc; font-size: 24px; }
 .office-map { width: 100%; min-height: 400px; aspect-ratio: 1.5; overflow: hidden; border-radius: 10px; background: #0f172a; }
 .office-map canvas { display: block; width: 100% !important; height: 100% !important; }
 .map-hint { margin: 11px 5px 0; color: #64748b; font-size: 12px; }
+.desk-notice { margin: 5px 5px 0; color: #ffd37a; font-size: 11px; }
 .inspector { min-height: 240px; padding: 20px; }
 .inspector-empty { color: #94a3b8; line-height: 1.55; }
 .agent-role { color: #7dd3fc !important; text-transform: capitalize; }
