@@ -22,7 +22,7 @@ vi.mock('phaser', () => {
 });
 
 import Phaser from 'phaser';
-import { officeAssetManifest, officeCanvas } from './office-assets.js';
+import { agentSprite, officeAssetManifest, officeCanvas } from './office-assets.js';
 import { createOfficeGame, OfficeScene } from './OfficeScene.js';
 
 describe('OfficeScene pixel office background', () => {
@@ -36,9 +36,9 @@ describe('OfficeScene pixel office background', () => {
     scene.preload();
 
     expect(scene.load.image).toHaveBeenCalledWith('office-background', officeAssetManifest.background);
-    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-builder', officeAssetManifest.agents.builder, { frameWidth: 32, frameHeight: 48 });
-    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-tester', officeAssetManifest.agents.tester, { frameWidth: 32, frameHeight: 48 });
-    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-documenter', officeAssetManifest.agents.documenter, { frameWidth: 32, frameHeight: 48 });
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-builder', officeAssetManifest.agents.builder, agentSprite);
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-tester', officeAssetManifest.agents.tester, agentSprite);
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-documenter', officeAssetManifest.agents.documenter, agentSprite);
     expect(scene.load.image).toHaveBeenCalledWith('office-status-markers', officeAssetManifest.markers);
     expect(scene.load.image).toHaveBeenCalledWith('office-props', officeAssetManifest.props);
     expect(scene.load.image).toHaveBeenCalledWith('office-nameplates', officeAssetManifest.nameplates);
@@ -94,6 +94,8 @@ describe('OfficeScene pixel office background', () => {
 
     expect(scene.add.sprite).toHaveBeenCalledWith(0, 0, 'agent-tester', 0);
     expect(sprite.setFrame).toHaveBeenCalledWith(1);
+    expect(scene.add.rectangle).toHaveBeenCalledWith(0, -36, 56, 80);
+    expect(container.setSize).toHaveBeenCalledWith(64, 108);
     scene.setSelectedAgent('tester');
     expect(outline.setVisible).toHaveBeenLastCalledWith(true);
   });

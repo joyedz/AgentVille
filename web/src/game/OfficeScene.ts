@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { toCanvasPosition } from './positions.js';
-import { officeAssetManifest, officeCanvas } from './office-assets.js';
+import { agentSprite, officeAssetManifest, officeCanvas } from './office-assets.js';
 import type { Zone } from '../../../server/protocol.js';
 
 export type OfficeAgent = {
@@ -71,9 +71,9 @@ export class OfficeScene extends Phaser.Scene {
 
   preload(): void {
     this.load.image('office-background', officeAssetManifest.background);
-    this.load.spritesheet('agent-builder', officeAssetManifest.agents.builder, { frameWidth: 32, frameHeight: 48 });
-    this.load.spritesheet('agent-tester', officeAssetManifest.agents.tester, { frameWidth: 32, frameHeight: 48 });
-    this.load.spritesheet('agent-documenter', officeAssetManifest.agents.documenter, { frameWidth: 32, frameHeight: 48 });
+    this.load.spritesheet('agent-builder', officeAssetManifest.agents.builder, agentSprite);
+    this.load.spritesheet('agent-tester', officeAssetManifest.agents.tester, agentSprite);
+    this.load.spritesheet('agent-documenter', officeAssetManifest.agents.documenter, agentSprite);
     this.load.image('office-status-markers', officeAssetManifest.markers);
     this.load.image('office-props', officeAssetManifest.props);
     this.load.image('office-nameplates', officeAssetManifest.nameplates);
@@ -109,12 +109,12 @@ export class OfficeScene extends Phaser.Scene {
       const existing = this.views.get(agent.id);
 
       if (!existing) {
-        const outline = this.add.rectangle(0, -25, 40, 56)
+        const outline = this.add.rectangle(0, -36, 56, 80)
           .setStrokeStyle(2, 0xfacc15, 1)
           .setFillStyle(0x000000, 0)
           .setVisible(this.selectedAgentId === agent.id);
         const body = this.add.sprite(0, 0, texture, 0).setOrigin(0.5, 1).setFrame(frame);
-        const label = this.add.text(0, -52, agent.name, {
+        const label = this.add.text(0, -78, agent.name, {
           color: '#e2e8f0',
           fontFamily: 'system-ui, sans-serif',
           fontSize: '11px',
@@ -122,7 +122,7 @@ export class OfficeScene extends Phaser.Scene {
           padding: { left: 4, right: 4, top: 2, bottom: 2 },
           align: 'center'
         }).setOrigin(0.5, 1);
-        const marker = this.add.text(0, -75, agent.status.toUpperCase(), {
+        const marker = this.add.text(0, -101, agent.status.toUpperCase(), {
           color: '#0f172a',
           backgroundColor: toHexColor(color),
           fontFamily: 'monospace',
@@ -132,7 +132,7 @@ export class OfficeScene extends Phaser.Scene {
           align: 'center'
         }).setOrigin(0.5, 1);
         const container = this.add.container(target.x, target.y, [outline, body, label, marker]);
-        container.setSize(52, 84).setInteractive({ useHandCursor: true });
+        container.setSize(64, 108).setInteractive({ useHandCursor: true });
         container.on('pointerup', () => this.onAgentSelected(agent.id));
         this.views.set(agent.id, { container, body, outline, label, marker });
       } else {
