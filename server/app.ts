@@ -99,7 +99,7 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
   };
 
   const execute: ProcessExecutor = options.execute ?? ((input) => new Promise((resolve, reject) => {
-    const child = spawn(input.command, input.args, { cwd: input.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(input.command, input.args, { cwd: input.cwd, signal: input.signal, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });

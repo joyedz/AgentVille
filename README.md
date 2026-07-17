@@ -12,7 +12,7 @@ The server listens on `127.0.0.1:8787`; Vite serves the UI on `127.0.0.1:5173` a
 
 ## Real Codex mode
 
-Run `codex --version` and a small `codex exec` task first. Then set `AGENTVILLE_MODE=codex` in the shell and restart the dev server. Each agent receives a fresh copy under `.agentville/workspaces/<agent-id>` and the adapter reports the process output and exit status. Pause and stop are safe at checkpoint boundaries; a running child process is never duplicated by resume.
+Run `codex --version` and a small `codex exec` task first. Then set `AGENTVILLE_MODE=codex` in the shell and restart the dev server. Each new agent receives a fresh copy under `.agentville/workspaces/<agent-id>`; existing workspaces are preserved across restarts. The adapter reports process output and exit status. Pause and stop are safe at checkpoint boundaries; a running child process is never duplicated by resume.
 
 If Codex cannot start, the UI receives an actionable error event and you can return to mock mode by setting `AGENTVILLE_MODE=mock`.
 

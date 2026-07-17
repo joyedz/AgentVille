@@ -8,11 +8,11 @@ it('runs Codex inside its assigned workspace and reports completion', async () =
 
   await runner.runNext();
 
-  expect(execute).toHaveBeenCalledWith({
+  expect(execute).toHaveBeenCalledWith(expect.objectContaining({
     command: 'codex',
     args: ['exec', 'Implement the assigned bounded task. Run tests and report changed files.'],
     cwd: 'C:/tmp/agent-a1'
-  });
+  }));
   expect(emit).toHaveBeenNthCalledWith(1, {
     agentId: 'a1',
     status: 'working',
@@ -84,4 +84,22 @@ it('restarts Codex after a paused in-flight run settles and resumes', async () =
   await firstRun;
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(execute).toHaveBeenCalledTimes(2);
+});
+
+it('aborts the active process when stopped', async () => {
+  let settle!: (result: { code: number; stdout: string; stderr: string }) => void;
+  let signal!: AbortSignal;
+  const execute = vi.fn().mockImplementation((input: { signal?: AbortSignal }) => {
+    signal = input.signal!;
+    return new Promise((resolve) => { settle = resolve; });
+  });
+  const runner = new CodexRunner('a1', 'C:/tmp/agent-a1', execute, vi.fn());
+
+  const run = runner.runNext();
+  await Promise.resolve();
+  await runner.accept({ type: 'stop' });
+
+  expect(signal.aborted).toBe(true);
+  settle({ code: 1, stdout: '', stderr: 'aborted' });
+  await run;
 });

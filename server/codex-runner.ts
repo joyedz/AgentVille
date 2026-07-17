@@ -2,7 +2,7 @@ import type { CommandType } from './protocol.js';
 import type { Runner, RunnerAcceptResult, RunnerEvent } from './runner.js';
 
 export type ProcessResult = { code: number; stdout: string; stderr: string };
-export type ProcessExecutor = (input: { command: string; args: string[]; cwd: string }) => Promise<ProcessResult>;
+export type ProcessExecutor = (input: { command: string; args: string[]; cwd: string; signal?: AbortSignal }) => Promise<ProcessResult>;
 
 function outputMetadata(output: string): Pick<RunnerEvent, 'changedFiles' | 'logTail' | 'summary'> {
   const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -20,6 +20,7 @@ export class CodexRunner {
   private paused = false;
   private stopped = false;
   private resumeRequested = false;
+  private activeAbortController?: AbortController;
   private taskTitle?: string;
   private currentTaskId?: string;
   private readonly instructions: string[] = [];
@@ -35,6 +36,8 @@ export class CodexRunner {
     if (this.stopped || this.paused || this.executing) return;
     this.executing = true;
     this.working = true;
+    const abortController = new AbortController();
+    this.activeAbortController = abortController;
     this.emit({ agentId: this.agentId, status: 'working', currentTaskId: this.currentTaskId, checkpoint: 'implement' });
 
     try {
@@ -46,8 +49,10 @@ export class CodexRunner {
       const result = await this.execute({
         command: process.env.CODEX_BIN ?? 'codex',
         args: ['exec', prompt],
-        cwd: this.cwd
+        cwd: this.cwd,
+        signal: abortController.signal
       });
+      if (this.stopped && abortController.signal.aborted) return;
       const message =
         result.stderr ||
         result.stdout ||
@@ -68,6 +73,7 @@ export class CodexRunner {
       this.resumeRequested = false;
       this.executing = false;
       this.working = false;
+      if (this.activeAbortController === abortController) this.activeAbortController = undefined;
       if (shouldResume) queueMicrotask(() => void this.runNext());
     }
   }
@@ -96,6 +102,7 @@ export class CodexRunner {
         this.stopped = true;
         this.paused = false;
         this.working = false;
+        this.activeAbortController?.abort();
         this.emit({ agentId: this.agentId, currentTaskId: this.currentTaskId, status: 'stopped', checkpoint: 'implement', message: 'stopped' });
         return { ok: true, message: 'stopped' };
       case 'assign_task': {
