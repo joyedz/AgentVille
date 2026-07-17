@@ -71,4 +71,16 @@ describe('CommandQueue', () => {
     expect(contender.take('a1')).toBeUndefined();
     database.close();
   });
+
+  it('refreshes a cached command status before duplicate enqueue', () => {
+    const database = openDatabase(':memory:');
+    const cachedQueue = new CommandQueue(database);
+    const original = cachedQueue.enqueue({ id: 'c1', agentId: 'a1', type: 'pause' });
+    const otherQueue = new CommandQueue(database);
+
+    expect(otherQueue.take('a1')?.status).toBe('acknowledged');
+    expect(cachedQueue.enqueue({ id: 'c1', agentId: 'a1', type: 'pause' })).toBe(original);
+    expect(original.status).toBe('acknowledged');
+    database.close();
+  });
 });

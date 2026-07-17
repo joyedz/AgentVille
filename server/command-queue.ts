@@ -64,7 +64,10 @@ export class CommandQueue {
 
   enqueue(input: CommandInput): Command {
     const existing = this.byId.get(input.id);
-    if (existing) return existing;
+    if (existing) {
+      this.refreshCached(existing);
+      return existing;
+    }
 
     const command: Command = {
       ...input,
@@ -134,5 +137,33 @@ export class CommandQueue {
     const commands = this.pending.get(command.agentId) ?? [];
     commands.push(command);
     this.pending.set(command.agentId, commands);
+  }
+
+  private refreshCached(command: Command): void {
+    if (!this.database) return;
+    const row = this.database.prepare(
+      'SELECT id, agent_id, type, payload, status, created_at FROM commands WHERE id = ?'
+    ).get(command.id) as unknown as CommandRow | undefined;
+    if (!row) return;
+
+    const saved = decodeRow(row);
+    const previousStatus = command.status;
+    if (previousStatus === 'pending' && saved.status !== 'pending') {
+      this.removePending(command);
+    }
+    command.status = saved.status;
+    command.payload = saved.payload ? { ...saved.payload } : undefined;
+    command.createdAt = saved.createdAt;
+    if (previousStatus !== 'pending' && saved.status === 'pending') {
+      this.addPending(command);
+    }
+  }
+
+  private removePending(command: Command): void {
+    const commands = this.pending.get(command.agentId);
+    if (!commands) return;
+    const index = commands.indexOf(command);
+    if (index >= 0) commands.splice(index, 1);
+    if (commands.length === 0) this.pending.delete(command.agentId);
   }
 }
