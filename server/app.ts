@@ -51,7 +51,11 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
         client.send(encoded);
       } catch {
         clients.delete(client);
-        client.close?.();
+        try {
+          client.close?.();
+        } catch {
+          // The socket may already be closed; dropping it is sufficient.
+        }
       }
     }
   };
@@ -169,7 +173,11 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
         client.send(JSON.stringify({ type: 'state.snapshot', data: store.snapshot() }));
       } catch {
         clients.delete(client);
-        client.close?.();
+        try {
+          client.close?.();
+        } catch {
+          // The socket may already be closed; dropping it is sufficient.
+        }
       }
       client.on('close', () => clients.delete(client));
     });

@@ -1,33 +1,56 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Game } from 'phaser';
+import { agentSchema, type Agent as ProtocolAgent } from '../../server/protocol.js';
 import { connect, type ServerMessage } from './api.js';
 import { createOfficeGame, type OfficeAgent } from './game/OfficeScene.js';
 
-type Agent = OfficeAgent & {
-  lastUpdated?: string;
-  message?: string;
-  summary?: string;
-};
+type Agent = OfficeAgent & Pick<ProtocolAgent, 'lastUpdated' | 'message' | 'summary' | 'x' | 'y'>;
 
 type Snapshot = {
   mode?: 'mock' | 'codex';
   agents?: Agent[];
 };
 
-function isAgent(value: unknown): value is Agent {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<Agent>;
-  return typeof candidate.id === 'string' && typeof candidate.name === 'string' &&
-    typeof candidate.zone === 'string' && typeof candidate.status === 'string';
+export type ClientState = {
+  mode: 'mock' | 'codex';
+  agents: Agent[];
+};
+
+export function reduceMessage(state: ClientState, message: ServerMessage): { state: ClientState; valid: boolean } {
+  if (message.type === 'state.snapshot') {
+    const snapshot = message.data;
+    if (!snapshot || typeof snapshot !== 'object') return { state, valid: false };
+    const input = snapshot as Snapshot;
+    if (!Array.isArray(input.agents)) return { state, valid: false };
+    const agents: Agent[] = [];
+    let valid = input.mode === undefined || input.mode === 'mock' || input.mode === 'codex';
+    for (const candidate of input.agents) {
+      const parsed = agentSchema.safeParse(candidate);
+      if (parsed.success) agents.push(parsed.data);
+      else valid = false;
+    }
+    const mode = input.mode === 'mock' || input.mode === 'codex' ? input.mode : state.mode;
+    return { state: { mode, agents }, valid };
+  }
+  if (message.type === 'agent.updated') {
+    const parsed = agentSchema.safeParse(message.data);
+    if (!parsed.success) return { state, valid: false };
+    const index = state.agents.findIndex((agent) => agent.id === parsed.data.id);
+    const agents = [...state.agents];
+    if (index < 0) agents.push(parsed.data);
+    else agents[index] = parsed.data;
+    return { state: { ...state, agents }, valid: true };
+  }
+  return { state, valid: true };
 }
 
 export function App() {
   const mapRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Game | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [mode, setMode] = useState<'mock' | 'codex'>('mock');
+  const [clientState, setClientState] = useState<ClientState>({ mode: 'mock', agents: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [connection, setConnection] = useState<'connecting' | 'live' | 'closed' | 'error'>('connecting');
+  const { agents, mode } = clientState;
 
   useEffect(() => {
     if (!mapRef.current) return undefined;
@@ -38,20 +61,11 @@ export function App() {
     });
 
     function handleMessage(message: ServerMessage): void {
-      if (message.type === 'state.snapshot') {
-        const snapshot = (message.data ?? {}) as Snapshot;
-        setMode(snapshot.mode ?? 'mock');
-        setAgents(snapshot.agents?.filter(isAgent) ?? []);
-      } else if (message.type === 'agent.updated' && isAgent(message.data)) {
-        const agent = message.data;
-        setAgents((current) => {
-          const index = current.findIndex((currentAgent) => currentAgent.id === agent.id);
-          if (index < 0) return [...current, agent];
-          const next = [...current];
-          next[index] = agent;
-          return next;
-        });
-      }
+      setClientState((current) => {
+        const result = reduceMessage(current, message);
+        if (!result.valid) setConnection('error');
+        return result.state;
+      });
     }
 
     return () => {
