@@ -98,3 +98,17 @@ it('restarts a stopped runner with a fresh checkpoint plan when assigning a task
   await runner.runNext();
   expect(emit).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'working', checkpoint: 'inspect' }));
 });
+
+it('rejects pausing an idle runner after completing its checkpoints', async () => {
+  const emit = vi.fn();
+  const runner = new MockRunner('builder', emit, ['inspect']);
+
+  await runner.runNext();
+  await runner.runNext();
+  expect(emit).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'idle', summary: 'task complete' }));
+
+  const result = await runner.accept({ type: 'pause' });
+
+  expect(result).toMatchObject({ ok: false, error: 'pause is not valid in the current state' });
+  expect(emit).not.toHaveBeenLastCalledWith(expect.objectContaining({ status: 'paused' }));
+});

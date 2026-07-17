@@ -13,6 +13,7 @@ export class MockRunner implements Runner {
   private paused = false;
   private stopped = false;
   private blocked = false;
+  private working = false;
   private readonly instructions: string[] = [];
   private nextTaskTitle?: string;
   private currentTaskId?: string;
@@ -26,6 +27,7 @@ export class MockRunner implements Runner {
   async runNext(): Promise<void> {
     if (this.stopped || this.paused) return;
     if (this.blocked) {
+      this.working = false;
       this.emitEvent('blocked', this.currentCheckpoint(), 'approval required');
       return;
     }
@@ -36,6 +38,7 @@ export class MockRunner implements Runner {
       return;
     }
     if (this.index + 1 >= this.checkpoints.length) {
+      this.working = false;
       this.emitEvent('idle', this.currentCheckpoint(), undefined, 'task complete');
       return;
     }
@@ -44,6 +47,7 @@ export class MockRunner implements Runner {
     const checkpoint = this.currentCheckpoint();
     if (checkpoint === 'approval') {
       this.blocked = true;
+      this.working = false;
       this.emitEvent('blocked', checkpoint, 'approval required');
       return;
     }
@@ -61,8 +65,9 @@ export class MockRunner implements Runner {
         this.emitWorking(this.currentCheckpoint());
         return this.success();
       case 'pause':
-        if (this.stopped || this.paused) return this.failure('pause is not valid in the current state');
+        if (!this.working) return this.failure('pause is not valid in the current state');
         this.paused = true;
+        this.working = false;
         this.emitEvent('paused', this.currentCheckpoint());
         return this.success();
       case 'resume':
@@ -75,6 +80,7 @@ export class MockRunner implements Runner {
         this.stopped = true;
         this.paused = false;
         this.blocked = false;
+        this.working = false;
         this.emitEvent('stopped', this.currentCheckpoint(), 'stopped');
         return this.success('stopped');
       case 'add_instruction': {
@@ -94,6 +100,7 @@ export class MockRunner implements Runner {
         this.blocked = false;
         this.paused = false;
         this.stopped = false;
+        this.working = false;
         this.nextTaskTitle = undefined;
         this.nextTaskTitle = taskTitle.trim();
         this.currentTaskId = command.id ?? taskTitle.trim();
@@ -126,6 +133,7 @@ export class MockRunner implements Runner {
   }
 
   private emitWorking(checkpoint: string | undefined): void {
+    this.working = true;
     const message = this.instructions.length > 0 ? this.instructions.shift() : undefined;
     this.emitEvent('working', checkpoint, message);
   }
