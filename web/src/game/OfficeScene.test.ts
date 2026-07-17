@@ -68,4 +68,33 @@ describe('OfficeScene pixel office background', () => {
       render: { antialias: false, pixelArt: true }
     }));
   });
+
+  it('selects a role sprite, status frame, and selection outline', () => {
+    const scene = new OfficeScene(vi.fn());
+    const sprite = { setOrigin: vi.fn().mockReturnThis(), setFrame: vi.fn().mockReturnThis() };
+    const outline = {
+      setStrokeStyle: vi.fn().mockReturnThis(),
+      setFillStyle: vi.fn().mockReturnThis(),
+      setVisible: vi.fn().mockReturnThis()
+    };
+    const text = { setOrigin: vi.fn().mockReturnThis(), setText: vi.fn().mockReturnThis(), setBackgroundColor: vi.fn().mockReturnThis() };
+    const container = {
+      setSize: vi.fn().mockReturnThis(),
+      setInteractive: vi.fn().mockReturnThis(),
+      on: vi.fn()
+    };
+    scene.add = {
+      rectangle: vi.fn().mockReturnValue(outline),
+      sprite: vi.fn().mockReturnValue(sprite),
+      text: vi.fn().mockReturnValue(text),
+      container: vi.fn().mockReturnValue(container)
+    } as unknown as typeof scene.add;
+
+    scene.updateAgents([{ id: 'tester', name: 'Tester', role: 'Tester', status: 'working', zone: 'desk' }]);
+
+    expect(scene.add.sprite).toHaveBeenCalledWith(0, 0, 'agent-tester', 0);
+    expect(sprite.setFrame).toHaveBeenCalledWith(1);
+    scene.setSelectedAgent('tester');
+    expect(outline.setVisible).toHaveBeenLastCalledWith(true);
+  });
 });
