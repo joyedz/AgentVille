@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Game } from 'phaser';
-import { agentSchema, type Agent as ProtocolAgent } from '../../server/protocol.js';
-import { connect, type ServerMessage } from './api.js';
+import { agentSchema, commandSchema, type Agent as ProtocolAgent, type Command } from '../../server/protocol.js';
+import { connect, sendCommand, type ServerMessage } from './api.js';
 import { createOfficeGame, type OfficeAgent } from './game/OfficeScene.js';
+import { Inspector, type InspectorAgent } from './components/Inspector.js';
+import type { CommandBody } from './components/AssignTaskDialog.js';
 
 type Agent = OfficeAgent & Pick<ProtocolAgent, 'lastUpdated' | 'message' | 'summary' | 'x' | 'y'>;
 
@@ -14,6 +16,7 @@ type Snapshot = {
 export type ClientState = {
   mode: 'mock' | 'codex';
   agents: Agent[];
+  commands?: Command[];
 };
 
 export function reduceMessage(state: ClientState, message: ServerMessage): { state: ClientState; valid: boolean } {
@@ -23,15 +26,23 @@ export function reduceMessage(state: ClientState, message: ServerMessage): { sta
     const input = snapshot as Snapshot;
     if (!Array.isArray(input.agents)) return { state, valid: false };
     const agents: Agent[] = [];
+    const commands: Command[] = [];
     let valid = input.mode === undefined || input.mode === 'mock' || input.mode === 'codex';
     for (const candidate of input.agents) {
       const parsed = agentSchema.safeParse(candidate);
       if (parsed.success) agents.push(parsed.data);
       else valid = false;
     }
+    if (Array.isArray((input as Snapshot & { commands?: unknown }).commands)) {
+      for (const candidate of (input as Snapshot & { commands: unknown[] }).commands) {
+        const parsed = commandSchema.safeParse(candidate);
+        if (parsed.success) commands.push(parsed.data);
+        else valid = false;
+      }
+    }
     if (!valid) return { state, valid: false };
     const mode = input.mode === 'mock' || input.mode === 'codex' ? input.mode : state.mode;
-    return { state: { mode, agents }, valid: true };
+    return { state: { mode, agents, commands }, valid: true };
   }
   if (message.type === 'agent.updated') {
     const parsed = agentSchema.safeParse(message.data);
@@ -42,13 +53,23 @@ export function reduceMessage(state: ClientState, message: ServerMessage): { sta
     else agents[index] = parsed.data;
     return { state: { ...state, agents }, valid: true };
   }
+  if (message.type === 'command.updated') {
+    const parsed = commandSchema.safeParse(message.data);
+    if (!parsed.success) return { state, valid: false };
+    const currentCommands = state.commands ?? [];
+    const index = currentCommands.findIndex((command) => command.id === parsed.data.id);
+    const commands = [...currentCommands];
+    if (index < 0) commands.push(parsed.data);
+    else commands[index] = parsed.data;
+    return { state: { ...state, commands }, valid: true };
+  }
   return { state, valid: true };
 }
 
 export function App() {
   const mapRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Game | null>(null);
-  const [clientState, setClientState] = useState<ClientState>({ mode: 'mock', agents: [] });
+  const [clientState, setClientState] = useState<ClientState>({ mode: 'mock', agents: [], commands: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [connection, setConnection] = useState<'connecting' | 'live' | 'closed' | 'error'>('connecting');
   const { agents, mode } = clientState;
@@ -82,6 +103,12 @@ export function App() {
   }, [agents]);
 
   const connectionLabel = connection === 'live' ? 'LIVE' : connection.toUpperCase();
+  const selectedAgent = agents.find((agent) => agent.id === selectedId);
+
+  async function handleCommand(agentId: string, command: CommandBody): Promise<unknown> {
+    const body = { ...command, id: command.id ?? `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
+    return sendCommand(agentId, body);
+  }
 
   return (
     <main className="app-shell">
@@ -102,11 +129,7 @@ export function App() {
           <div ref={mapRef} className="office-map" aria-label="Agentville office map" />
           <p className="map-hint">Select an agent on the map to inspect their current state.</p>
         </div>
-        <aside className="inspector-placeholder">
-          <p className="eyebrow">INSPECTOR</p>
-          <h2>Select an agent</h2>
-          <p>Inspector controls arrive in the next task.</p>
-        </aside>
+        <Inspector agent={selectedAgent as InspectorAgent | undefined} commands={clientState.commands} onCommand={handleCommand} />
       </section>
     </main>
   );
