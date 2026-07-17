@@ -23,6 +23,7 @@ export type ControlPlaneApp = FastifyInstance & {
 type ClientSocket = {
   readyState: number;
   send(data: string): void;
+  close?(): void;
   on(event: 'close', listener: () => void): void;
 };
 
@@ -42,7 +43,16 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
   const broadcast = (message: unknown): void => {
     const encoded = JSON.stringify(message);
     for (const client of clients) {
-      if (client.readyState === 1) client.send(encoded);
+      if (client.readyState !== 1) {
+        clients.delete(client);
+        continue;
+      }
+      try {
+        client.send(encoded);
+      } catch {
+        clients.delete(client);
+        client.close?.();
+      }
     }
   };
 
@@ -155,7 +165,12 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
     app.get('/ws', { websocket: true }, (socket) => {
       const client = socket as unknown as ClientSocket;
       clients.add(client);
-      client.send(JSON.stringify({ type: 'state.snapshot', data: store.snapshot() }));
+      try {
+        client.send(JSON.stringify({ type: 'state.snapshot', data: store.snapshot() }));
+      } catch {
+        clients.delete(client);
+        client.close?.();
+      }
       client.on('close', () => clients.delete(client));
     });
   });
