@@ -117,7 +117,7 @@ describe('OfficeScene pixel office background', () => {
     });
     (scene.tweens.add as ReturnType<typeof vi.fn>).mockImplementation((config: { onComplete?: () => void }) => {
       tweenConfig = config;
-      return {};
+      return { stop: vi.fn() };
     });
     scene.add = {
       rectangle: vi.fn().mockReturnValue(outline),
@@ -144,5 +144,40 @@ describe('OfficeScene pixel office background', () => {
 
     scene.updateAgents([]);
     expect(timer.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores stale tween completion after a rapid retarget', () => {
+    const scene = new OfficeScene(vi.fn());
+    const sprite = { setOrigin: vi.fn().mockReturnThis(), setFrame: vi.fn().mockReturnThis(), setScale: vi.fn().mockReturnThis(), setTexture: vi.fn().mockReturnThis() };
+    const outline = { setStrokeStyle: vi.fn().mockReturnThis(), setFillStyle: vi.fn().mockReturnThis(), setVisible: vi.fn().mockReturnThis() };
+    const text = { setOrigin: vi.fn().mockReturnThis(), setText: vi.fn().mockReturnThis(), setBackgroundColor: vi.fn().mockReturnThis() };
+    const container = { setSize: vi.fn().mockReturnThis(), setInteractive: vi.fn().mockReturnThis(), on: vi.fn(), destroy: vi.fn() };
+    const timers = [{ remove: vi.fn() }, { remove: vi.fn() }];
+    const tweenConfigs: Array<{ onComplete?: () => void }> = [];
+    let timerIndex = 0;
+    (scene.time.addEvent as ReturnType<typeof vi.fn>).mockImplementation((config: { callback: () => void }) => {
+      void config;
+      return timers[timerIndex++];
+    });
+    (scene.tweens.add as ReturnType<typeof vi.fn>).mockImplementation((config: { onComplete?: () => void }) => {
+      tweenConfigs.push(config);
+      return { stop: vi.fn() };
+    });
+    scene.add = {
+      rectangle: vi.fn().mockReturnValue(outline),
+      sprite: vi.fn().mockReturnValue(sprite),
+      text: vi.fn().mockReturnValue(text),
+      container: vi.fn().mockReturnValue(container)
+    } as unknown as typeof scene.add;
+
+    scene.updateAgents([{ id: 'builder', name: 'Builder', status: 'working', zone: 'desk' }]);
+    scene.updateAgents([{ id: 'builder', name: 'Builder', status: 'working', zone: 'coffee' }]);
+    scene.updateAgents([{ id: 'builder', name: 'Builder', status: 'working', zone: 'lounge' }]);
+
+    tweenConfigs[0]?.onComplete?.();
+    expect(timers[0].remove).toHaveBeenCalledTimes(1);
+    expect(timers[1].remove).not.toHaveBeenCalled();
+    tweenConfigs[1]?.onComplete?.();
+    expect(timers[1].remove).toHaveBeenCalledTimes(1);
   });
 });

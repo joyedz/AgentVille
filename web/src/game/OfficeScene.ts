@@ -21,6 +21,8 @@ type AgentView = {
   walkTimer: Phaser.Time.TimerEvent | null;
   walkFrameIndex: number;
   statusFrame: number;
+  motionTween: Phaser.Tweens.Tween | null;
+  motionGeneration: number;
 };
 
 const zoneColors: Record<Zone, number> = {
@@ -151,7 +153,9 @@ export class OfficeScene extends Phaser.Scene {
           target,
           walkTimer: null,
           walkFrameIndex: 0,
-          statusFrame: frame
+          statusFrame: frame,
+          motionTween: null,
+          motionGeneration: 0
         });
       } else {
         const targetChanged = existing.target.x !== target.x || existing.target.y !== target.y;
@@ -166,6 +170,7 @@ export class OfficeScene extends Phaser.Scene {
           this.stopAgentMotion(existing);
           existing.target = target;
           existing.walkFrameIndex = 0;
+          const motionGeneration = existing.motionGeneration;
           existing.walkTimer = this.time.addEvent({
             delay: agentPresentation.frameDurationMs,
             loop: true,
@@ -174,13 +179,14 @@ export class OfficeScene extends Phaser.Scene {
               existing.walkFrameIndex = (existing.walkFrameIndex + 1) % agentPresentation.walkFrames.length;
             }
           });
-          this.tweens.add({
+          existing.motionTween = this.tweens.add({
             targets: existing.container,
             x: target.x,
             y: target.y,
             duration: 350,
             ease: 'Sine.easeOut',
             onComplete: () => {
+              if (existing.motionGeneration !== motionGeneration) return;
               this.stopAgentMotion(existing);
               existing.body.setFrame(existing.statusFrame);
             }
@@ -199,7 +205,10 @@ export class OfficeScene extends Phaser.Scene {
   private stopAgentMotion(view: AgentView): void {
     view.walkTimer?.remove();
     view.walkTimer = null;
+    view.motionTween?.stop();
+    view.motionTween = null;
     view.walkFrameIndex = 0;
+    view.motionGeneration += 1;
   }
 
   private drawOffice(): void {
@@ -216,6 +225,7 @@ export class OfficeScene extends Phaser.Scene {
     this.events.once('shutdown', () => {
       deskHitArea.destroy();
       this.input.keyboard?.off('keydown-D', this.onEmptyDeskSelected);
+      for (const view of this.views.values()) this.stopAgentMotion(view);
     });
   }
 }
