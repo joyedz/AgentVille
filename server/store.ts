@@ -17,7 +17,8 @@ export type AgentStore = {
   updateAgent(agent: Agent): void;
   take(agentId: string): Command | undefined;
   getCommand(id: string): Command | undefined;
-  updateCommandStatus(id: string, status: Command['status']): Command | undefined;
+  updateCommandStatus(id: string, status: Command['status'], error?: string): Command | undefined;
+  markCommandFailed(id: string, error: string): Command | undefined;
   close(): void;
 };
 
@@ -79,9 +80,13 @@ export function createStore(
       ensureOpen();
       return queue.get(id);
     },
-    updateCommandStatus: (id, status) => {
+    updateCommandStatus: (id, status, error) => {
       ensureOpen();
-      return queue.updateStatus(id, status);
+      return queue.updateStatus(id, status, error);
+    },
+    markCommandFailed: (id, error) => {
+      ensureOpen();
+      return queue.markFailed(id, error);
     },
     close: () => {
       if (closed) return;

@@ -1,8 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 
 /** Open (and initialise) the AgentVille persistence database. */
-export function openDatabase(filename = 'agentville.db'): DatabaseSync {
-  const database = new DatabaseSync(filename);
+export function openDatabase(source: string | DatabaseSync = 'agentville.db'): DatabaseSync {
+  const database = typeof source === 'string' ? new DatabaseSync(source) : source;
   database.exec(`
     CREATE TABLE IF NOT EXISTS commands (
       id TEXT PRIMARY KEY,
@@ -10,6 +10,7 @@ export function openDatabase(filename = 'agentville.db'): DatabaseSync {
       type TEXT NOT NULL,
       payload TEXT,
       status TEXT NOT NULL,
+      error TEXT,
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS agents (
@@ -21,5 +22,9 @@ export function openDatabase(filename = 'agentville.db'): DatabaseSync {
       body TEXT NOT NULL
     );
   `);
+  const columns = database.prepare('PRAGMA table_info(commands)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'error')) {
+    database.exec('ALTER TABLE commands ADD COLUMN error TEXT');
+  }
   return database;
 }

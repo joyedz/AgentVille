@@ -83,4 +83,15 @@ describe('CommandQueue', () => {
     expect(original.status).toBe('acknowledged');
     database.close();
   });
+
+  it('persists failure details and returns them from duplicate lookups', () => {
+    const database = openDatabase(':memory:');
+    const queue = new CommandQueue(database);
+    queue.enqueue({ id: 'c1', agentId: 'a1', type: 'pause' });
+
+    expect(queue.markFailed('c1', 'runner is stopped')).toMatchObject({ status: 'failed', error: 'runner is stopped' });
+    expect(queue.get('c1')).toMatchObject({ status: 'failed', error: 'runner is stopped' });
+    expect(queue.enqueue({ id: 'c1', agentId: 'a1', type: 'pause' })).toMatchObject({ status: 'failed', error: 'runner is stopped' });
+    database.close();
+  });
 });

@@ -14,6 +14,7 @@ type CommandRow = {
   type: string;
   payload: string | null;
   status: string;
+  error: string | null;
   created_at: string;
 };
 
@@ -32,6 +33,7 @@ function decodeRow(row: CommandRow): Command {
     type: row.type as CommandType,
     payload,
     status: row.status as Command['status'],
+    error: row.error === null ? undefined : row.error,
     createdAt: row.created_at
   };
 }
@@ -43,18 +45,20 @@ export class CommandQueue {
   private readonly insertStatement;
   private readonly acknowledgeStatement;
   private readonly statusStatement;
+  private readonly failedStatement;
 
   constructor(private readonly database?: DatabaseSync) {
     this.insertStatement = database?.prepare(
-      'INSERT OR IGNORE INTO commands (id, agent_id, type, payload, status, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT OR IGNORE INTO commands (id, agent_id, type, payload, status, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
     this.acknowledgeStatement = database?.prepare(
       "UPDATE commands SET status = 'acknowledged' WHERE id = ? AND status = 'pending'"
     );
     this.statusStatement = database?.prepare('UPDATE commands SET status = ? WHERE id = ?');
+    this.failedStatement = database?.prepare("UPDATE commands SET status = 'failed', error = ? WHERE id = ?");
     if (database) {
       const rows = database.prepare(
-        'SELECT id, agent_id, type, payload, status, created_at FROM commands ORDER BY rowid ASC'
+        'SELECT id, agent_id, type, payload, status, error, created_at FROM commands ORDER BY rowid ASC'
       ).all() as unknown as CommandRow[];
       for (const row of rows) {
         const command = decodeRow(row);
@@ -83,12 +87,13 @@ export class CommandQueue {
       command.type,
       command.payload === undefined ? null : JSON.stringify(command.payload),
       command.status,
+      null,
       command.createdAt
     );
 
     if (this.database && result && Number(result.changes) === 0) {
       const canonical = this.database.prepare(
-        'SELECT id, agent_id, type, payload, status, created_at FROM commands WHERE id = ?'
+        'SELECT id, agent_id, type, payload, status, error, created_at FROM commands WHERE id = ?'
       ).get(command.id) as unknown as CommandRow | undefined;
       if (canonical) {
         const saved = decodeRow(canonical);
@@ -112,7 +117,7 @@ export class CommandQueue {
       const result = this.acknowledgeStatement?.run(command.id);
       if (this.database && result && Number(result.changes) !== 1) {
         const canonical = this.database.prepare(
-          'SELECT id, agent_id, type, payload, status, created_at FROM commands WHERE id = ?'
+          'SELECT id, agent_id, type, payload, status, error, created_at FROM commands WHERE id = ?'
         ).get(command.id) as unknown as CommandRow | undefined;
         if (canonical) this.byId.set(command.id, decodeRow(canonical));
         else this.byId.delete(command.id);
@@ -140,11 +145,26 @@ export class CommandQueue {
     return copyCommand(command);
   }
 
-  updateStatus(id: string, status: Command['status']): Command | undefined {
+  updateStatus(id: string, status: Command['status'], error?: string): Command | undefined {
     const command = this.byId.get(id);
     if (!command) return undefined;
-    this.statusStatement?.run(status, id);
+    if (status === 'failed' && error !== undefined) {
+      this.failedStatement?.run(error, id);
+      command.error = error;
+    } else {
+      this.statusStatement?.run(status, id);
+    }
     command.status = status;
+    this.removePending(command);
+    return copyCommand(command);
+  }
+
+  markFailed(id: string, error: string): Command | undefined {
+    const command = this.byId.get(id);
+    if (!command) return undefined;
+    this.failedStatement?.run(error, id);
+    command.status = 'failed';
+    command.error = error;
     this.removePending(command);
     return copyCommand(command);
   }
@@ -158,7 +178,7 @@ export class CommandQueue {
   private refreshCached(command: Command): void {
     if (!this.database) return;
     const row = this.database.prepare(
-      'SELECT id, agent_id, type, payload, status, created_at FROM commands WHERE id = ?'
+      'SELECT id, agent_id, type, payload, status, error, created_at FROM commands WHERE id = ?'
     ).get(command.id) as unknown as CommandRow | undefined;
     if (!row) return;
 
@@ -169,6 +189,7 @@ export class CommandQueue {
     }
     command.status = saved.status;
     command.payload = saved.payload ? { ...saved.payload } : undefined;
+    command.error = saved.error;
     command.createdAt = saved.createdAt;
     if (previousStatus !== 'pending' && saved.status === 'pending') {
       this.addPending(command);

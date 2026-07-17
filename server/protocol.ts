@@ -52,6 +52,7 @@ export const commandSchema = z.object({
   type: commandTypeSchema,
   payload: commandPayloadSchema,
   status: commandStatusSchema,
+  error: z.string().optional(),
   createdAt: nonEmptyString
 });
 

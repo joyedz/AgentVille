@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { DatabaseSync } from 'node:sqlite';
 import { openDatabase } from '../db.js';
 
 describe('openDatabase', () => {
@@ -16,5 +17,13 @@ describe('openDatabase', () => {
       .all() as Array<{ name: string }>;
 
     expect(tables.map((table) => table.name)).toEqual(['agents', 'commands', 'tasks']);
+  });
+
+  it('adds the command error column when opening an older database', () => {
+    database = new DatabaseSync(':memory:');
+    database.exec(`CREATE TABLE commands (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, type TEXT NOT NULL, payload TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL);`);
+    openDatabase(database);
+    const columns = database.prepare('PRAGMA table_info(commands)').all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).toContain('error');
   });
 });

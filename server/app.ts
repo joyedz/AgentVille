@@ -55,8 +55,8 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
       status,
       zone: assignZone(status, 0),
       checkpoint: event.checkpoint ?? current.checkpoint,
-      message: event.message ?? current.message,
-      summary: event.summary ?? current.summary,
+      message: event.message,
+      summary: event.summary,
       lastUpdated: new Date().toISOString()
     };
     store.updateAgent(updated);
@@ -100,24 +100,20 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
       try {
         const result = await runner.accept(next);
         if (!result.ok) {
-          const failed = store.updateCommandStatus(next.id, 'failed');
+          const failed = store.markCommandFailed(next.id, result.error);
           if (failed) {
-            broadcast({
-              type: 'command.updated',
-              data: { ...failed, error: result.error, message: result.message, summary: result.summary }
-            });
+            broadcast({ type: 'command.updated', data: failed });
           }
           continue;
         }
+        if (next.type === 'assign_task') await runner.runNext();
         const done = store.updateCommandStatus(next.id, 'done');
         if (done) broadcast({ type: 'command.updated', data: done });
       } catch (error) {
-        const failed = store.updateCommandStatus(next.id, 'failed');
+        const message = error instanceof Error ? error.message : String(error);
+        const failed = store.markCommandFailed(next.id, message);
         if (failed) {
-          broadcast({
-            type: 'command.updated',
-            data: { ...failed, error: error instanceof Error ? error.message : String(error) }
-          });
+          broadcast({ type: 'command.updated', data: failed });
         }
       }
     }
