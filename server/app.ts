@@ -54,6 +54,7 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
       ...current,
       status,
       zone: assignZone(status, 0),
+      currentTaskId: event.currentTaskId ?? current.currentTaskId,
       checkpoint: event.checkpoint ?? current.checkpoint,
       message: event.message,
       summary: event.summary,

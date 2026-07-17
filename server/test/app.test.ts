@@ -68,7 +68,11 @@ describe('mock control plane app', () => {
     const assign = await app.inject({ method: 'POST', url: '/api/agents/tester/commands', payload: { id: 'assign-tester', type: 'assign_task', payload: { taskTitle: 'new task' } } });
     expect(assign.json()).toMatchObject({ id: 'assign-tester', status: 'done' });
     const after = (await app.inject({ method: 'GET', url: '/api/state' })).json();
-    expect(after.agents.find((agent: { id: string }) => agent.id === 'tester')).toMatchObject({ status: 'working', checkpoint: 'new task' });
+    expect(after.agents.find((agent: { id: string }) => agent.id === 'tester')).toMatchObject({
+      status: 'working',
+      checkpoint: 'new task',
+      currentTaskId: 'assign-tester'
+    });
     expect(after.agents.find((agent: { id: string }) => agent.id === 'tester')).not.toHaveProperty('summary');
   });
 

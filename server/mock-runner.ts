@@ -15,6 +15,7 @@ export class MockRunner implements Runner {
   private blocked = false;
   private readonly instructions: string[] = [];
   private nextTaskTitle?: string;
+  private currentTaskId?: string;
 
   constructor(
     private readonly agentId: string,
@@ -50,7 +51,7 @@ export class MockRunner implements Runner {
     this.emitWorking(checkpoint);
   }
 
-  async accept(command: { type: CommandType; payload?: unknown }): Promise<RunnerAcceptResult> {
+  async accept(command: { id?: string; type: CommandType; payload?: unknown }): Promise<RunnerAcceptResult> {
     const payload = payloadObject(command.payload);
     switch (command.type) {
       case 'approve':
@@ -95,6 +96,7 @@ export class MockRunner implements Runner {
         this.stopped = false;
         this.nextTaskTitle = undefined;
         this.nextTaskTitle = taskTitle.trim();
+        this.currentTaskId = command.id ?? taskTitle.trim();
         return this.success();
       }
       default:
@@ -129,6 +131,6 @@ export class MockRunner implements Runner {
   }
 
   private emitEvent(status: RunnerEvent['status'], checkpoint?: string, message?: string, summary?: string): void {
-    this.emit({ agentId: this.agentId, status, checkpoint, message, summary });
+    this.emit({ agentId: this.agentId, status, currentTaskId: this.currentTaskId, checkpoint, message, summary });
   }
 }

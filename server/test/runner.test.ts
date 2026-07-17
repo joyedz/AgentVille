@@ -72,10 +72,14 @@ it('restarts an idle runner with a fresh checkpoint plan when assigning a task',
   await runner.runNext();
   expect(emit).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'idle' }));
 
-  const result = await runner.accept({ type: 'assign_task', payload: { taskTitle: 'new-task' } });
+  const result = await runner.accept({ id: 'task-42', type: 'assign_task', payload: { taskTitle: 'new-task' } });
   expect(result).toMatchObject({ ok: true });
   await runner.runNext();
-  expect(emit).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'working', checkpoint: 'new-task' }));
+  expect(emit).toHaveBeenLastCalledWith(expect.objectContaining({
+    status: 'working',
+    checkpoint: 'new-task',
+    currentTaskId: 'task-42'
+  }));
   await runner.runNext();
   expect(emit).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'working', checkpoint: 'inspect' }));
 });
