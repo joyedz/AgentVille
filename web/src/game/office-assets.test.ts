@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { officeAssetManifest, officeCanvas } from './office-assets.js';
+import { agentPresentation, officeAssetManifest, officeCanvas } from './office-assets.js';
 
 describe('office asset contract', () => {
+  it('uses the scaled two-frame presentation contract for agents', () => {
+    expect(agentPresentation).toEqual({
+      scale: 1.5,
+      frameDurationMs: 140,
+      frameWidth: 48,
+      frameHeight: 72,
+      walkFrames: [0, 1]
+    });
+  });
+
   it('uses a fixed pixel-art canvas and stable asset URLs', () => {
     expect(officeCanvas).toEqual({ width: 960, height: 640 });
     expect(officeAssetManifest.background).toBe('/assets/office/office-background-furniture.png');

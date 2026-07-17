@@ -8,6 +8,7 @@ vi.mock('phaser', () => {
     input = { keyboard: { on: vi.fn(), off: vi.fn() } };
     load = { image: vi.fn(), spritesheet: vi.fn() };
     tweens = { add: vi.fn() };
+    time = { addEvent: vi.fn() };
   }
 
   return {
@@ -22,7 +23,7 @@ vi.mock('phaser', () => {
 });
 
 import Phaser from 'phaser';
-import { agentSprite, officeAssetManifest, officeCanvas } from './office-assets.js';
+import { agentPresentation, agentSprite, officeAssetManifest, officeCanvas } from './office-assets.js';
 import { createOfficeGame, OfficeScene } from './OfficeScene.js';
 
 describe('OfficeScene pixel office background', () => {
@@ -71,7 +72,7 @@ describe('OfficeScene pixel office background', () => {
 
   it('selects a role sprite, status frame, and selection outline', () => {
     const scene = new OfficeScene(vi.fn());
-    const sprite = { setOrigin: vi.fn().mockReturnThis(), setFrame: vi.fn().mockReturnThis() };
+    const sprite = { setOrigin: vi.fn().mockReturnThis(), setFrame: vi.fn().mockReturnThis(), setScale: vi.fn().mockReturnThis(), setTexture: vi.fn().mockReturnThis() };
     const outline = {
       setStrokeStyle: vi.fn().mockReturnThis(),
       setFillStyle: vi.fn().mockReturnThis(),
@@ -93,10 +94,55 @@ describe('OfficeScene pixel office background', () => {
     scene.updateAgents([{ id: 'tester', name: 'Tester', role: 'Tester', status: 'working', zone: 'desk' }]);
 
     expect(scene.add.sprite).toHaveBeenCalledWith(0, 0, 'agent-tester', 0);
+    expect(sprite.setScale).toHaveBeenCalledWith(agentPresentation.scale);
     expect(sprite.setFrame).toHaveBeenCalledWith(1);
-    expect(scene.add.rectangle).toHaveBeenCalledWith(0, -36, 56, 80);
-    expect(container.setSize).toHaveBeenCalledWith(64, 108);
+    expect(scene.add.rectangle).toHaveBeenCalledWith(0, -54, 84, 116);
+    expect(container.setSize).toHaveBeenCalledWith(96, 148);
     scene.setSelectedAgent('tester');
     expect(outline.setVisible).toHaveBeenLastCalledWith(true);
+  });
+
+  it('animates walk frames only while moving and restores the status frame on completion', () => {
+    const scene = new OfficeScene(vi.fn());
+    const sprite = { setOrigin: vi.fn().mockReturnThis(), setFrame: vi.fn().mockReturnThis(), setScale: vi.fn().mockReturnThis(), setTexture: vi.fn().mockReturnThis() };
+    const outline = { setStrokeStyle: vi.fn().mockReturnThis(), setFillStyle: vi.fn().mockReturnThis(), setVisible: vi.fn().mockReturnThis() };
+    const text = { setOrigin: vi.fn().mockReturnThis(), setText: vi.fn().mockReturnThis(), setBackgroundColor: vi.fn().mockReturnThis() };
+    const container = { setSize: vi.fn().mockReturnThis(), setInteractive: vi.fn().mockReturnThis(), on: vi.fn(), destroy: vi.fn() };
+    const timer = { remove: vi.fn() };
+    let timerConfig: { callback: () => void } | undefined;
+    let tweenConfig: { onComplete?: () => void } | undefined;
+    (scene.time.addEvent as ReturnType<typeof vi.fn>).mockImplementation((config: { callback: () => void }) => {
+      timerConfig = config;
+      return timer;
+    });
+    (scene.tweens.add as ReturnType<typeof vi.fn>).mockImplementation((config: { onComplete?: () => void }) => {
+      tweenConfig = config;
+      return {};
+    });
+    scene.add = {
+      rectangle: vi.fn().mockReturnValue(outline),
+      sprite: vi.fn().mockReturnValue(sprite),
+      text: vi.fn().mockReturnValue(text),
+      container: vi.fn().mockReturnValue(container)
+    } as unknown as typeof scene.add;
+
+    scene.updateAgents([{ id: 'builder', name: 'Builder', status: 'working', zone: 'desk' }]);
+    scene.updateAgents([{ id: 'builder', name: 'Builder', status: 'working', zone: 'coffee' }]);
+
+    expect(scene.time.addEvent).toHaveBeenCalledWith(expect.objectContaining({ delay: agentPresentation.frameDurationMs, loop: true }));
+    timerConfig?.callback();
+    expect(sprite.setFrame).toHaveBeenLastCalledWith(agentPresentation.walkFrames[0]);
+    timerConfig?.callback();
+    expect(sprite.setFrame).toHaveBeenLastCalledWith(agentPresentation.walkFrames[1]);
+    tweenConfig?.onComplete?.();
+    expect(timer.remove).toHaveBeenCalledTimes(1);
+    expect(sprite.setFrame).toHaveBeenLastCalledWith(1);
+
+    const tweenCount = (scene.tweens.add as ReturnType<typeof vi.fn>).mock.calls.length;
+    scene.updateAgents([{ id: 'builder', name: 'Builder', status: 'working', zone: 'coffee' }]);
+    expect(scene.tweens.add).toHaveBeenCalledTimes(tweenCount);
+
+    scene.updateAgents([]);
+    expect(timer.remove).toHaveBeenCalledTimes(1);
   });
 });

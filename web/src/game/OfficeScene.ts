@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { toCanvasPosition } from './positions.js';
-import { agentSprite, officeAssetManifest, officeCanvas } from './office-assets.js';
+import { agentPresentation, agentSprite, officeAssetManifest, officeCanvas } from './office-assets.js';
 import type { Zone } from '../../../server/protocol.js';
 
 export type OfficeAgent = {
@@ -17,6 +17,10 @@ type AgentView = {
   outline: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
   marker: Phaser.GameObjects.Text;
+  target: { x: number; y: number };
+  walkTimer: Phaser.Time.TimerEvent | null;
+  walkFrameIndex: number;
+  statusFrame: number;
 };
 
 const zoneColors: Record<Zone, number> = {
@@ -92,6 +96,7 @@ export class OfficeScene extends Phaser.Scene {
     const activeIds = new Set(agents.map((agent) => agent.id));
     for (const [id, view] of this.views) {
       if (!activeIds.has(id)) {
+        this.stopAgentMotion(view);
         view.container.destroy();
         this.views.delete(id);
       }
@@ -109,12 +114,15 @@ export class OfficeScene extends Phaser.Scene {
       const existing = this.views.get(agent.id);
 
       if (!existing) {
-        const outline = this.add.rectangle(0, -36, 56, 80)
+        const outline = this.add.rectangle(0, -54, 84, 116)
           .setStrokeStyle(2, 0xfacc15, 1)
           .setFillStyle(0x000000, 0)
           .setVisible(this.selectedAgentId === agent.id);
-        const body = this.add.sprite(0, 0, texture, 0).setOrigin(0.5, 1).setFrame(frame);
-        const label = this.add.text(0, -78, agent.name, {
+        const body = this.add.sprite(0, 0, texture, 0)
+          .setOrigin(0.5, 1)
+          .setScale(agentPresentation.scale)
+          .setFrame(frame);
+        const label = this.add.text(0, -122, agent.name, {
           color: '#e2e8f0',
           fontFamily: 'system-ui, sans-serif',
           fontSize: '11px',
@@ -122,7 +130,7 @@ export class OfficeScene extends Phaser.Scene {
           padding: { left: 4, right: 4, top: 2, bottom: 2 },
           align: 'center'
         }).setOrigin(0.5, 1);
-        const marker = this.add.text(0, -101, agent.status.toUpperCase(), {
+        const marker = this.add.text(0, -145, agent.status.toUpperCase(), {
           color: '#0f172a',
           backgroundColor: toHexColor(color),
           fontFamily: 'monospace',
@@ -132,22 +140,52 @@ export class OfficeScene extends Phaser.Scene {
           align: 'center'
         }).setOrigin(0.5, 1);
         const container = this.add.container(target.x, target.y, [outline, body, label, marker]);
-        container.setSize(64, 108).setInteractive({ useHandCursor: true });
+        container.setSize(96, 148).setInteractive({ useHandCursor: true });
         container.on('pointerup', () => this.onAgentSelected(agent.id));
-        this.views.set(agent.id, { container, body, outline, label, marker });
+        this.views.set(agent.id, {
+          container,
+          body,
+          outline,
+          label,
+          marker,
+          target,
+          walkTimer: null,
+          walkFrameIndex: 0,
+          statusFrame: frame
+        });
       } else {
-        existing.body.setTexture(texture).setFrame(frame);
+        const targetChanged = existing.target.x !== target.x || existing.target.y !== target.y;
+        existing.body.setTexture(texture);
+        existing.statusFrame = frame;
+        if (!existing.walkTimer) existing.body.setFrame(frame);
         existing.label.setText(agent.name);
         existing.marker.setText(agent.status.toUpperCase());
         existing.marker.setBackgroundColor(toHexColor(color));
         existing.outline.setVisible(this.selectedAgentId === agent.id);
-        this.tweens.add({
-          targets: existing.container,
-          x: target.x,
-          y: target.y,
-          duration: 350,
-          ease: 'Sine.easeOut'
-        });
+        if (targetChanged) {
+          this.stopAgentMotion(existing);
+          existing.target = target;
+          existing.walkFrameIndex = 0;
+          existing.walkTimer = this.time.addEvent({
+            delay: agentPresentation.frameDurationMs,
+            loop: true,
+            callback: () => {
+              existing.body.setFrame(agentPresentation.walkFrames[existing.walkFrameIndex]);
+              existing.walkFrameIndex = (existing.walkFrameIndex + 1) % agentPresentation.walkFrames.length;
+            }
+          });
+          this.tweens.add({
+            targets: existing.container,
+            x: target.x,
+            y: target.y,
+            duration: 350,
+            ease: 'Sine.easeOut',
+            onComplete: () => {
+              this.stopAgentMotion(existing);
+              existing.body.setFrame(existing.statusFrame);
+            }
+          });
+        }
       }
     }
   }
@@ -156,6 +194,12 @@ export class OfficeScene extends Phaser.Scene {
   setSelectedAgent(agentId: string | null): void {
     this.selectedAgentId = agentId;
     for (const [id, view] of this.views) view.outline.setVisible(id === agentId);
+  }
+
+  private stopAgentMotion(view: AgentView): void {
+    view.walkTimer?.remove();
+    view.walkTimer = null;
+    view.walkFrameIndex = 0;
   }
 
   private drawOffice(): void {
