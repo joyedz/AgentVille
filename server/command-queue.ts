@@ -42,6 +42,7 @@ export class CommandQueue {
   private readonly pending = new Map<string, Command[]>();
   private readonly insertStatement;
   private readonly acknowledgeStatement;
+  private readonly statusStatement;
 
   constructor(private readonly database?: DatabaseSync) {
     this.insertStatement = database?.prepare(
@@ -50,6 +51,7 @@ export class CommandQueue {
     this.acknowledgeStatement = database?.prepare(
       "UPDATE commands SET status = 'acknowledged' WHERE id = ? AND status = 'pending'"
     );
+    this.statusStatement = database?.prepare('UPDATE commands SET status = ? WHERE id = ?');
     if (database) {
       const rows = database.prepare(
         'SELECT id, agent_id, type, payload, status, created_at FROM commands ORDER BY rowid ASC'
@@ -128,9 +130,23 @@ export class CommandQueue {
 
   /** Return state records that are visible in the control-plane snapshot. */
   list(): Command[] {
-    return [...this.byId.values()]
-      .filter((command) => command.status === 'pending' || command.status === 'acknowledged')
-      .map(copyCommand);
+    return [...this.byId.values()].map(copyCommand);
+  }
+
+  get(id: string): Command | undefined {
+    const command = this.byId.get(id);
+    if (!command) return undefined;
+    this.refreshCached(command);
+    return copyCommand(command);
+  }
+
+  updateStatus(id: string, status: Command['status']): Command | undefined {
+    const command = this.byId.get(id);
+    if (!command) return undefined;
+    this.statusStatement?.run(status, id);
+    command.status = status;
+    this.removePending(command);
+    return copyCommand(command);
   }
 
   private addPending(command: Command): void {
