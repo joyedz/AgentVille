@@ -1,0 +1,37 @@
+{
+  "name": "agentville",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11",
+    "@fastify/websocket": "^11",
+    "fastify": "^5",
+    "phaser": "^3.90",
+    "react": "^19",
+    "react-dom": "^19",
+    "ws": "^8.18",
+    "zod": "^3.24"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5",
+    "concurrently": "^9",
+    "jsdom": "^26",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vite": "^7",
+    "vitest": "^3"
+  }
+}
