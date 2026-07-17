@@ -80,6 +80,8 @@ git commit -m "feat: define pixel office asset contract"
 - Create: `web/public/assets/office/agent-tester.png`
 - Create: `web/public/assets/office/agent-documenter.png`
 - Create: `web/public/assets/office/status-markers.png`
+- Create: `web/public/assets/office/office-props.png`
+- Create: `web/public/assets/office/nameplates.png`
 
 - [ ] **Step 1: Read the image-generation skill and use it for original bitmap assets.**
 
@@ -97,7 +99,11 @@ Generate three 32×48 pixel-art character sheets with four horizontal frames: id
 
 Create a small transparent marker sheet for working glow, amber blocked alert, violet paused badge, and red error badge. Verify all files decode locally and use nearest-neighbor-friendly dimensions before committing.
 
-- [ ] **Step 5: Commit only the reviewed asset files.**
+- [ ] **Step 5: Generate reusable prop and nameplate sheets.**
+
+Generate a compact transparent prop sheet containing desk monitors, coffee machine, lounge plants, shelving, and attention-room accents, plus a pixel nameplate sheet with empty, working, blocked, paused, and error treatments. Keep these sheets decorative: live text remains Phaser text so names and statuses stay accessible and data-driven.
+
+- [ ] **Step 6: Commit only the reviewed asset files.**
 
 ```bash
 git add web/public/assets/office
@@ -207,4 +213,3 @@ Expected: all existing tests plus the new scene/asset tests pass; TypeScript and
 git add web/src/styles.css web/src/App.tsx web/src/App.test.tsx README.md
 git commit -m "feat: polish pixel office presentation"
 ```
-
