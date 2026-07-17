@@ -86,13 +86,14 @@ export class MockRunner implements Runner {
       case 'assign_task': {
         const taskTitle = payload.taskTitle;
         if (typeof taskTitle !== 'string' || !taskTitle.trim()) return this.failure('taskTitle is required');
-        const restarting = this.stopped || this.index + 1 >= this.checkpoints.length;
-        if (restarting) {
-          this.index = -1;
-          this.blocked = false;
-          this.paused = false;
-          this.stopped = false;
+        if (!this.canAssignTask()) {
+          return this.failure('assign_task is only valid while idle, stopped, or completed');
         }
+        this.index = -1;
+        this.blocked = false;
+        this.paused = false;
+        this.stopped = false;
+        this.nextTaskTitle = undefined;
         this.nextTaskTitle = taskTitle.trim();
         return this.success();
       }
@@ -111,6 +112,15 @@ export class MockRunner implements Runner {
 
   private currentCheckpoint(): string | undefined {
     return this.nextTaskTitle ?? this.checkpoints[this.index];
+  }
+
+  private canAssignTask(): boolean {
+    return this.stopped || (
+      !this.paused
+      && !this.blocked
+      && !this.nextTaskTitle
+      && this.index + 1 >= this.checkpoints.length
+    );
   }
 
   private emitWorking(checkpoint: string | undefined): void {
