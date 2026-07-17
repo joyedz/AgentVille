@@ -1,18 +1,23 @@
 import { DatabaseSync } from 'node:sqlite';
+import { spawn } from 'node:child_process';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { assignZone } from './domain.js';
 import { MockRunner } from './mock-runner.js';
+import { CodexRunner, type ProcessExecutor } from './codex-runner.js';
 import { commandRequestSchema, type Agent, type Command } from './protocol.js';
 import type { RunnerEvent, Runner } from './runner.js';
+import { recoverActiveAgent } from './runner.js';
 import { createSeedAgents } from './seed.js';
 import { createStore, type AgentStore, type StoreMode } from './store.js';
 import { openDatabase } from './db.js';
+import { resetWorkspace, workspacePath } from './workspaces.js';
 
 export type BuildAppOptions = {
   database?: string | DatabaseSync;
-  mode?: 'mock';
+  mode?: 'mock' | 'codex';
+  execute?: ProcessExecutor;
 };
 
 export type ControlPlaneApp = FastifyInstance & {
@@ -29,11 +34,24 @@ type ClientSocket = {
 
 export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
   const app = Fastify({ logger: false });
-  const mode: StoreMode = options.mode ?? 'mock';
+  const mode: StoreMode = options.mode ?? (process.env.AGENTVILLE_MODE === 'codex' ? 'codex' : 'mock');
   const database = typeof options.database === 'string'
     ? openDatabase(options.database)
     : options.database ?? openDatabase('agentville.db');
+  const persistedAgentIds = new Set(
+    (database.prepare('SELECT id FROM agents ORDER BY rowid').all() as Array<{ id: string }>).map((row) => row.id)
+  );
   const store = createStore(createSeedAgents(), mode, database);
+  const recoveredAgentIds = new Set<string>();
+  if (persistedAgentIds.size > 0) {
+    for (const agent of store.snapshot().agents) {
+      const recovered = recoverActiveAgent(agent);
+      if (recovered.status !== agent.status) {
+        recoveredAgentIds.add(agent.id);
+        store.updateAgent(recovered);
+      }
+    }
+  }
   const clients = new Set<ClientSocket>();
   const runners = new Map<string, Runner>();
   const dispatchChains = new Map<string, Promise<void>>();
@@ -72,27 +90,49 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
       checkpoint: event.checkpoint ?? current.checkpoint,
       message: event.message,
       summary: event.summary,
+      changedFiles: event.changedFiles ?? current.changedFiles,
+      logTail: event.logTail ?? current.logTail,
       lastUpdated: new Date().toISOString()
     };
     store.updateAgent(updated);
     broadcast({ type: 'agent.updated', data: updated });
   };
 
-  for (const agent of createSeedAgents()) {
-    runners.set(agent.id, new MockRunner(agent.id, updateFromRunner, checkpointPlan));
+  const execute: ProcessExecutor = options.execute ?? ((input) => new Promise((resolve, reject) => {
+    const child = spawn(input.command, input.args, { cwd: input.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.once('error', reject);
+    child.once('close', (code) => resolve({ code: code ?? 1, stdout, stderr }));
+  }));
+
+  for (const agent of store.snapshot().agents) {
+    runners.set(agent.id, mode === 'codex'
+      ? new CodexRunner(agent.id, workspacePath(agent.id), execute, updateFromRunner)
+      : new MockRunner(agent.id, updateFromRunner, checkpointPlan));
   }
 
   let loopStarted = false;
-  const advanceMockAgents = async (agentIds = [...runners.keys()]): Promise<void> => {
+  const startupAgentIds = store.snapshot().agents
+    .filter((agent) => agent.status === 'working' && !recoveredAgentIds.has(agent.id))
+    .map((agent) => agent.id);
+  const advanceMockAgents = async (agentIds = startupAgentIds): Promise<void> => {
     for (const agentId of agentIds) await runners.get(agentId)?.runNext();
   };
   const startMockLoop = async (): Promise<void> => {
     if (loopStarted) return;
     loopStarted = true;
+    if (mode === 'codex') {
+      await Promise.all([...runners.keys()]
+        .filter((agentId) => !persistedAgentIds.has(agentId))
+        .map((agentId) => resetWorkspace(agentId)));
+    }
     await advanceMockAgents();
     // Keep the seeded Builder at its deterministic approval gate so the
     // control plane has a blocked checkpoint to demonstrate immediately.
-    await runners.get('builder')?.runNext();
+    if (mode === 'mock' && startupAgentIds.includes('builder')) await runners.get('builder')?.runNext();
   };
   app.decorate('advanceMockAgents', advanceMockAgents);
   app.decorate('startMockLoop', startMockLoop);

@@ -1,4 +1,5 @@
 import type { CommandType } from './protocol.js';
+import type { Agent } from './protocol.js';
 
 export type RunnerEvent = {
   agentId: string;
@@ -7,6 +8,8 @@ export type RunnerEvent = {
   checkpoint?: string;
   message?: string;
   summary?: string;
+  changedFiles?: string[];
+  logTail?: string[];
 };
 
 export type RunnerAcceptResult =
@@ -16,4 +19,11 @@ export type RunnerAcceptResult =
 export interface Runner {
   runNext(): Promise<void>;
   accept(command: { id?: string; type: CommandType; payload?: unknown }): Promise<RunnerAcceptResult>;
+}
+
+/** Convert work that was active at process shutdown into an explicit recovery checkpoint. */
+export function recoverActiveAgent(agent: Agent): Agent {
+  return agent.status === 'working'
+    ? { ...agent, status: 'paused', checkpoint: agent.checkpoint ?? 'inspect' }
+    : { ...agent };
 }

@@ -11,8 +11,13 @@ it('resets an agent workspace from the seed project', async () => {
     await resetWorkspace(agentId);
     await expect(access(`${target}/package.json`)).resolves.toBeUndefined();
     await expect(access(`${target}/src/format.ts`)).resolves.toBeUndefined();
+    await expect(access(`${target}/vitest.config.ts`)).resolves.toBeUndefined();
     await expect(access(`${target}/stale.txt`)).rejects.toThrow();
   } finally {
     await rm(target, { recursive: true, force: true });
   }
+});
+
+it('rejects traversal-shaped agent ids before touching the filesystem', async () => {
+  await expect(resetWorkspace('../escape')).rejects.toThrow(/agentId/);
 });
