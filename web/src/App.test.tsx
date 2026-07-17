@@ -1,4 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('./game/OfficeScene.js', () => ({
+  createOfficeGame: vi.fn(() => ({
+    destroy: vi.fn(),
+    scene: { getScene: vi.fn() }
+  }))
+}));
+
 import { reduceMessage, type ClientState } from './App.js';
 
 const initial: ClientState = { mode: 'mock', agents: [] };
