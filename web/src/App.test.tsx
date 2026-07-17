@@ -67,6 +67,7 @@ describe('reduceMessage', () => {
 it('renders the selected inspector and dispatches a command', async () => {
   harness.sendCommand.mockResolvedValue({ status: 'accepted' });
   render(<App />);
+  expect(screen.getByText('Agentville office map with Product desks, Coffee reset room, Lounge, and Attention room. Select an agent on the map or use the inspector.')).toBeTruthy();
   await waitFor(() => expect(harness.emitMessage).toBeDefined());
   act(() => harness.emitMessage?.({ type: 'state.snapshot', data: { mode: 'mock', agents: [{
     id: 'a1', name: 'Tester', role: 'Engineer', status: 'working', zone: 'desk', x: 1, y: 1,

@@ -154,7 +154,10 @@ export function App() {
       {clientState.notice && <p className="runner-notice" role="status">{clientState.notice}</p>}
       <section className="workspace">
         <div className="map-panel">
-          <div ref={mapRef} className="office-map" aria-label="Agentville office map" />
+          <div ref={mapRef} className="office-map" aria-hidden="true" />
+          <p id="office-map-summary" className="visually-hidden">
+            Agentville office map with Product desks, Coffee reset room, Lounge, and Attention room. Select an agent on the map or use the inspector.
+          </p>
           <p className="map-hint">Select an agent on the map to inspect their current state.</p>
           {deskNotice && <p className="desk-notice" role="status">{deskNotice}</p>}
         </div>
