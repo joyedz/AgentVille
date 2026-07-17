@@ -60,4 +60,15 @@ describe('CommandQueue', () => {
     expect(waitingQueue.take('a1')?.id).toBe('c1');
     database.close();
   });
+
+  it('atomically claims a pending command across queue instances', () => {
+    const database = openDatabase(':memory:');
+    const writer = new CommandQueue(database);
+    writer.enqueue({ id: 'c1', agentId: 'a1', type: 'pause' });
+    const contender = new CommandQueue(database);
+
+    expect(writer.take('a1')?.id).toBe('c1');
+    expect(contender.take('a1')).toBeUndefined();
+    database.close();
+  });
 });

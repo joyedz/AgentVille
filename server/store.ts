@@ -45,20 +45,38 @@ export function createStore(
     'INSERT INTO agents (id, body) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET body = excluded.body'
   );
   const queue = new CommandQueue(database);
+  let closed = false;
+  const ensureOpen = (): void => {
+    if (closed) throw new Error('AgentVille store is closed');
+  };
 
   return {
-    snapshot: () => ({
-      mode,
-      agents: [...agents.values()].map(copyAgent),
-      commands: queue.list()
-    }),
-    enqueue: (input) => queue.enqueue(input),
+    snapshot: () => {
+      ensureOpen();
+      return {
+        mode,
+        agents: [...agents.values()].map(copyAgent),
+        commands: queue.list()
+      };
+    },
+    enqueue: (input) => {
+      ensureOpen();
+      return queue.enqueue(input);
+    },
     updateAgent: (agent) => {
+      ensureOpen();
       const saved = copyAgent(agent);
       agents.set(saved.id, saved);
       updateAgentStatement.run(saved.id, JSON.stringify(saved));
     },
-    take: (agentId) => queue.take(agentId),
-    close: () => database.close()
+    take: (agentId) => {
+      ensureOpen();
+      return queue.take(agentId);
+    },
+    close: () => {
+      if (closed) return;
+      database.close();
+      closed = true;
+    }
   };
 }

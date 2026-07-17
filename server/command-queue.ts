@@ -48,7 +48,7 @@ export class CommandQueue {
       'INSERT OR IGNORE INTO commands (id, agent_id, type, payload, status, created_at) VALUES (?, ?, ?, ?, ?, ?)'
     );
     this.acknowledgeStatement = database?.prepare(
-      "UPDATE commands SET status = 'acknowledged' WHERE id = ?"
+      "UPDATE commands SET status = 'acknowledged' WHERE id = ? AND status = 'pending'"
     );
     if (database) {
       const rows = database.prepare(
@@ -102,11 +102,25 @@ export class CommandQueue {
     const agentCommands = this.pending.get(agentId);
     if (!agentCommands || agentCommands.length === 0) return undefined;
 
-    const command = agentCommands.shift()!;
-    if (agentCommands.length === 0) this.pending.delete(agentId);
-    command.status = 'acknowledged';
-    this.acknowledgeStatement?.run(command.id);
-    return copyCommand(command);
+    while (agentCommands.length > 0) {
+      const command = agentCommands.shift()!;
+      const result = this.acknowledgeStatement?.run(command.id);
+      if (this.database && result && Number(result.changes) !== 1) {
+        const canonical = this.database.prepare(
+          'SELECT id, agent_id, type, payload, status, created_at FROM commands WHERE id = ?'
+        ).get(command.id) as unknown as CommandRow | undefined;
+        if (canonical) this.byId.set(command.id, decodeRow(canonical));
+        else this.byId.delete(command.id);
+        continue;
+      }
+
+      command.status = 'acknowledged';
+      if (agentCommands.length === 0) this.pending.delete(agentId);
+      return copyCommand(command);
+    }
+
+    this.pending.delete(agentId);
+    return undefined;
   }
 
   /** Return state records that are visible in the control-plane snapshot. */
