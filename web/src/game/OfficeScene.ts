@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { toCanvasPosition } from './positions.js';
+import { toCanvasPosition, zoneSeatCount } from './positions.js';
 import { agentPresentation, agentSprite, officeAssetManifest, officeCanvas } from './office-assets.js';
 import type { Zone } from '../../../server/protocol.js';
 
@@ -41,7 +41,7 @@ const statusColors: Record<string, number> = {
   stopped: 0x64748b
 };
 
-// Agent sheets contain idle, working, blocked, and paused frames in that order.
+// Stationary status frames precede the four walk-only frames in every sheet.
 const statusFrames: Record<string, number> = {
   idle: 0,
   stopped: 0,
@@ -50,6 +50,9 @@ const statusFrames: Record<string, number> = {
   error: 2,
   paused: 3
 };
+
+const backgroundDepth = 0;
+const agentDepth = 2;
 
 function textureForRole(role: string | undefined, id: string): string {
   const value = `${role ?? ''} ${id}`.toLowerCase();
@@ -64,15 +67,13 @@ function toHexColor(color: number): string {
 
 export class OfficeScene extends Phaser.Scene {
   private readonly onAgentSelected: (agentId: string) => void;
-  private readonly onEmptyDeskSelected?: () => void;
   private readonly views = new Map<string, AgentView>();
   private pendingAgents: OfficeAgent[] = [];
   private selectedAgentId: string | null = null;
 
-  constructor(onAgentSelected: (agentId: string) => void, onEmptyDeskSelected?: () => void) {
+  constructor(onAgentSelected: (agentId: string) => void) {
     super({ key: 'OfficeScene' });
     this.onAgentSelected = onAgentSelected;
-    this.onEmptyDeskSelected = onEmptyDeskSelected;
   }
 
   preload(): void {
@@ -86,7 +87,9 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.add.image(officeCanvas.width / 2, officeCanvas.height / 2, 'office-background').setOrigin(0.5);
+    this.add.image(officeCanvas.width / 2, officeCanvas.height / 2, 'office-background')
+      .setOrigin(0.5)
+      .setDepth(backgroundDepth);
     this.drawOffice();
     this.updateAgents(this.pendingAgents);
   }
@@ -104,12 +107,32 @@ export class OfficeScene extends Phaser.Scene {
       }
     }
 
-    const slots = new Map<Zone, number>();
     const ordered = [...agents].sort((a, b) => a.id.localeCompare(b.id));
+    // Desks are personal: each agent keeps a stable home seat based on its
+    // position in the full roster, so an assignment fills an empty desk instead
+    // of displacing a coworker.
+    const homeSeat = new Map<string, number>();
+    ordered.forEach((agent, index) => homeSeat.set(agent.id, index));
+    // The break areas are transient, so occupants are packed into distinct
+    // seats; a full lounge spills into the otherwise-empty coffee area so agents
+    // never stack on top of each other.
+    const zoneUsage = new Map<Zone, number>();
+    const nextSeat = (zone: Zone): number => {
+      const used = zoneUsage.get(zone) ?? 0;
+      zoneUsage.set(zone, used + 1);
+      return used;
+    };
+    const seatFor = (agent: OfficeAgent): { x: number; y: number } => {
+      if (agent.zone === 'desk') return toCanvasPosition('desk', homeSeat.get(agent.id) ?? 0);
+      if (agent.zone === 'lounge') {
+        const used = nextSeat('lounge');
+        if (used < zoneSeatCount('lounge')) return toCanvasPosition('lounge', used);
+        return toCanvasPosition('coffee', nextSeat('coffee'));
+      }
+      return toCanvasPosition(agent.zone, nextSeat(agent.zone));
+    };
     for (const agent of ordered) {
-      const slot = slots.get(agent.zone) ?? 0;
-      slots.set(agent.zone, slot + 1);
-      const target = toCanvasPosition(agent.zone, slot);
+      const target = seatFor(agent);
       const color = statusColors[agent.status] ?? zoneColors[agent.zone];
       const texture = textureForRole(agent.role, agent.id);
       const frame = statusFrames[agent.status] ?? 0;
@@ -141,8 +164,9 @@ export class OfficeScene extends Phaser.Scene {
           padding: { left: 4, right: 4, top: 2, bottom: 2 },
           align: 'center'
         }).setOrigin(0.5, 1);
+        // Child order deliberately keeps the text UI above this agent's sprite.
         const container = this.add.container(target.x, target.y, [outline, body, label, marker]);
-        container.setSize(96, 148).setInteractive({ useHandCursor: true });
+        container.setSize(96, 148).setInteractive({ useHandCursor: true }).setDepth(agentDepth);
         container.on('pointerup', () => this.onAgentSelected(agent.id));
         this.views.set(agent.id, {
           container,
@@ -166,32 +190,7 @@ export class OfficeScene extends Phaser.Scene {
         existing.marker.setText(agent.status.toUpperCase());
         existing.marker.setBackgroundColor(toHexColor(color));
         existing.outline.setVisible(this.selectedAgentId === agent.id);
-        if (targetChanged) {
-          this.stopAgentMotion(existing);
-          existing.target = target;
-          existing.walkFrameIndex = 0;
-          const motionGeneration = existing.motionGeneration;
-          existing.walkTimer = this.time.addEvent({
-            delay: agentPresentation.frameDurationMs,
-            loop: true,
-            callback: () => {
-              existing.body.setFrame(agentPresentation.walkFrames[existing.walkFrameIndex]);
-              existing.walkFrameIndex = (existing.walkFrameIndex + 1) % agentPresentation.walkFrames.length;
-            }
-          });
-          existing.motionTween = this.tweens.add({
-            targets: existing.container,
-            x: target.x,
-            y: target.y,
-            duration: 350,
-            ease: 'Sine.easeOut',
-            onComplete: () => {
-              if (existing.motionGeneration !== motionGeneration) return;
-              this.stopAgentMotion(existing);
-              existing.body.setFrame(existing.statusFrame);
-            }
-          });
-        }
+        if (targetChanged) this.startAgentMotion(existing, target);
       }
     }
   }
@@ -202,29 +201,55 @@ export class OfficeScene extends Phaser.Scene {
     for (const [id, view] of this.views) view.outline.setVisible(id === agentId);
   }
 
+  private startAgentMotion(view: AgentView, target: { x: number; y: number }): void {
+    // Retargeting first cancels the old timer/tween and restores the current status.
+    this.stopAgentMotion(view);
+    view.target = target;
+    const motionGeneration = view.motionGeneration;
+    view.walkFrameIndex = 1;
+    view.body.setFrame(agentPresentation.walkFrames[0]);
+    view.walkTimer = this.time.addEvent({
+      delay: agentPresentation.frameDurationMs,
+      loop: true,
+      callback: () => {
+        view.body.setFrame(agentPresentation.walkFrames[view.walkFrameIndex]);
+        view.walkFrameIndex = (view.walkFrameIndex + 1) % agentPresentation.walkFrames.length;
+      }
+    });
+    view.motionTween = this.tweens.add({
+      targets: view.container,
+      x: target.x,
+      y: target.y,
+      duration: 360,
+      ease: 'Sine.easeOut',
+      onComplete: () => this.finishAgentMotion(view, motionGeneration),
+      onStop: () => this.finishAgentMotion(view, motionGeneration)
+    });
+  }
+
+  private finishAgentMotion(view: AgentView, motionGeneration: number): void {
+    if (view.motionGeneration !== motionGeneration) return;
+    this.stopAgentMotion(view);
+  }
+
   private stopAgentMotion(view: AgentView): void {
-    view.walkTimer?.remove();
+    const timer = view.walkTimer;
+    const tween = view.motionTween;
     view.walkTimer = null;
-    view.motionTween?.stop();
     view.motionTween = null;
     view.walkFrameIndex = 0;
+    // Invalidate callbacks before stopping a Phaser tween, which can emit onStop.
     view.motionGeneration += 1;
+    timer?.remove();
+    tween?.stop();
+    view.body.setFrame(view.statusFrame);
   }
 
   private drawOffice(): void {
     this.cameras.main.setBackgroundColor('#0f172a');
-    // The pixel-art background owns the room composition. Keep only the
-    // interactive empty-desk hit area from the previous drawn layout.
-    if (!this.onEmptyDeskSelected || typeof this.add.zone !== 'function') return;
-
-    const deskHitArea = this.add.zone(280, 230, 460, 235)
-      .setInteractive({ useHandCursor: true })
-      .setDepth(-1);
-    deskHitArea.on('pointerup', this.onEmptyDeskSelected);
-    this.input.keyboard?.on('keydown-D', this.onEmptyDeskSelected);
+    // The pixel-art background owns the room composition; agents are the only
+    // interactive objects, so there is no invisible hit zone over the map.
     this.events.once('shutdown', () => {
-      deskHitArea.destroy();
-      this.input.keyboard?.off('keydown-D', this.onEmptyDeskSelected);
       for (const view of this.views.values()) this.stopAgentMotion(view);
     });
   }
@@ -232,8 +257,7 @@ export class OfficeScene extends Phaser.Scene {
 
 export function createOfficeGame(
   parent: HTMLElement,
-  onAgentSelected: (agentId: string) => void,
-  onEmptyDeskSelected?: () => void
+  onAgentSelected: (agentId: string) => void
 ): Phaser.Game {
   return new Phaser.Game({
     type: Phaser.AUTO,
@@ -242,7 +266,7 @@ export function createOfficeGame(
     parent,
     backgroundColor: '#0f172a',
     render: { antialias: false, pixelArt: true },
-    scene: new OfficeScene(onAgentSelected, onEmptyDeskSelected),
+    scene: new OfficeScene(onAgentSelected),
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }
   });
 }

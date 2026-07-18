@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Game } from 'phaser';
 import { agentSchema, commandSchema, type Agent as ProtocolAgent, type Command } from '../../server/protocol.js';
-import { connect, sendCommand, type ServerMessage } from './api.js';
+import { connect, fetchState, sendCommand, type ServerMessage } from './api.js';
 import { createOfficeGame, type OfficeAgent } from './game/OfficeScene.js';
 import { Inspector, type InspectorAgent } from './components/Inspector.js';
-import { AssignTaskDialog, type CommandBody } from './components/AssignTaskDialog.js';
+import type { CommandBody } from './components/AssignTaskDialog.js';
 
 type Agent = OfficeAgent & Pick<ProtocolAgent, 'lastUpdated' | 'message' | 'summary' | 'x' | 'y' | 'currentTaskId' | 'currentTaskTitle' | 'checkpoint' | 'changedFiles' | 'logTail'>;
 
@@ -74,35 +74,21 @@ export function reduceMessage(state: ClientState, message: ServerMessage): { sta
   return { state, valid: true };
 }
 
+const httpPollingIntervalMs = 1_000;
+
 export function App() {
   const mapRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Game | null>(null);
   const [clientState, setClientState] = useState<ClientState>({ mode: 'mock', agents: [], commands: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [deskAssignmentAgentId, setDeskAssignmentAgentId] = useState<string | null>(null);
-  const [deskNotice, setDeskNotice] = useState<string | null>(null);
   const [connection, setConnection] = useState<'connecting' | 'live' | 'closed' | 'error'>('connecting');
   const { agents, mode } = clientState;
-  const agentsRef = useRef<Agent[]>([]);
-  agentsRef.current = agents;
-
-  function handleEmptyDeskSelected(): void {
-    const target = agentsRef.current.find((agent) => agent.status === 'idle' || agent.status === 'stopped');
-    if (!target) {
-      setDeskNotice('No idle crew available. Select an agent to assign a task.');
-      return;
-    }
-    setDeskNotice(null);
-    setDeskAssignmentAgentId(target.id);
-  }
+  const refreshStateRef = useRef<() => Promise<void>>(async () => undefined);
 
   useEffect(() => {
     if (!mapRef.current) return undefined;
-    const game = createOfficeGame(mapRef.current, setSelectedId, handleEmptyDeskSelected);
+    const game = createOfficeGame(mapRef.current, setSelectedId);
     gameRef.current = game;
-    const connectionHandle = connect(handleMessage, (status) => {
-      setConnection(status === 'open' ? 'live' : status);
-    });
 
     function handleMessage(message: ServerMessage): void {
       setClientState((current) => {
@@ -112,12 +98,36 @@ export function App() {
       });
     }
 
+    async function refreshState(): Promise<void> {
+      try {
+        handleMessage({ type: 'state.snapshot', data: await fetchState() });
+      } catch {
+        setConnection((current) => current === 'live' ? current : 'error');
+      }
+    }
+
+    refreshStateRef.current = refreshState;
+    const connectionHandle = connect(handleMessage, (status) => {
+      setConnection(status === 'open' ? 'live' : status);
+      if (status === 'open') void refreshState();
+    });
+    void refreshState();
+
     return () => {
+      refreshStateRef.current = async () => undefined;
       connectionHandle.close();
       game.destroy(true);
       gameRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (connection === 'live') return undefined;
+    const pollingTimer = window.setInterval(() => {
+      void refreshStateRef.current();
+    }, httpPollingIntervalMs);
+    return () => window.clearInterval(pollingTimer);
+  }, [connection]);
 
   useEffect(() => {
     const scene = gameRef.current?.scene.getScene('OfficeScene') as { updateAgents?: (next: Agent[]) => void } | undefined;
@@ -134,7 +144,9 @@ export function App() {
 
   async function handleCommand(agentId: string, command: CommandBody): Promise<unknown> {
     const body = { ...command, id: command.id ?? `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
-    return sendCommand(agentId, body);
+    const result = await sendCommand(agentId, body);
+    await refreshStateRef.current();
+    return result;
   }
 
   return (
@@ -158,17 +170,26 @@ export function App() {
           <p id="office-map-summary" className="visually-hidden">
             Agentville office map with Product desks, Coffee reset room, Lounge, and Attention room. Select an agent on the map or use the inspector.
           </p>
-          <p className="map-hint">Select an agent on the map to inspect their current state.</p>
-          {deskNotice && <p className="desk-notice" role="status">{deskNotice}</p>}
+          <p className="map-hint">Select an agent on the map or from the roster below to inspect their current state.</p>
+          <nav className="agent-roster" aria-label="Agent roster">
+            {agents.length === 0
+              ? <p className="roster-empty">Waiting for agents…</p>
+              : agents.map((agent) => (
+                <button
+                  key={agent.id}
+                  type="button"
+                  className={`roster-item${agent.id === selectedId ? ' roster-item-active' : ''}`}
+                  aria-pressed={agent.id === selectedId}
+                  onClick={() => setSelectedId(agent.id)}
+                >
+                  <span className="roster-name">{agent.name}</span>
+                  <span className={`status-badge status-${agent.status}`}>{agent.status.toUpperCase()}</span>
+                </button>
+              ))}
+          </nav>
         </div>
         <Inspector agent={selectedAgent as InspectorAgent | undefined} commands={clientState.commands} onCommand={handleCommand} />
       </section>
-      {deskAssignmentAgentId && <AssignTaskDialog
-        agentId={deskAssignmentAgentId}
-        open
-        onClose={() => setDeskAssignmentAgentId(null)}
-        onCommand={handleCommand}
-      />}
     </main>
   );
 }

@@ -110,8 +110,8 @@ export function buildApp(options: BuildAppOptions = {}): ControlPlaneApp {
 
   for (const agent of store.snapshot().agents) {
     runners.set(agent.id, mode === 'codex'
-      ? new CodexRunner(agent.id, workspacePath(agent.id), execute, updateFromRunner)
-      : new MockRunner(agent.id, updateFromRunner, checkpointPlan));
+      ? new CodexRunner(agent.id, workspacePath(agent.id), execute, updateFromRunner, agent.status)
+      : new MockRunner(agent.id, updateFromRunner, checkpointPlan, agent.status));
   }
 
   let loopStarted = false;

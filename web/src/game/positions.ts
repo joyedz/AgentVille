@@ -4,9 +4,9 @@ export type CanvasPosition = { x: number; y: number };
 
 const positions: Record<Zone, readonly CanvasPosition[]> = {
   desk: [
-    { x: 330, y: 250 },
-    { x: 480, y: 250 },
-    { x: 630, y: 250 }
+    { x: 330, y: 335 },
+    { x: 480, y: 335 },
+    { x: 630, y: 335 }
   ],
   coffee: [
     { x: 150, y: 500 },
@@ -27,4 +27,8 @@ export function toCanvasPosition(zone: Zone, slot: number): CanvasPosition {
   if (!seats) return { x: 0, y: 0 };
   const index = ((slot % seats.length) + seats.length) % seats.length;
   return seats[index] ?? { x: 0, y: 0 };
+}
+
+export function zoneSeatCount(zone: Zone): number {
+  return positions[zone]?.length ?? 0;
 }

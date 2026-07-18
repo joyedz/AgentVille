@@ -1,14 +1,14 @@
 export const officeCanvas = { width: 960, height: 640 } as const;
 
-/** Four horizontal human poses per sheet, rendered at native pixel size. */
+/** Eight horizontal human poses per sheet, rendered at native pixel size. */
 export const agentSprite = { frameWidth: 48, frameHeight: 72 } as const;
 
 export const agentPresentation = {
   scale: 1.5,
-  frameDurationMs: 140,
+  frameDurationMs: 90,
   frameWidth: 48,
   frameHeight: 72,
-  walkFrames: [0, 1]
+  walkFrames: [4, 5, 6, 7]
 } as const;
 
 export const officeAssetManifest = {
