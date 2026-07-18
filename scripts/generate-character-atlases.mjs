@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 
 const WIDTH = 384;
@@ -26,25 +27,25 @@ function rect(data, x, y, w, h, color) {
 function shape(data, ox, oy, rows, color) {
   rows.forEach((row, y) => [...row].forEach((on, x) => { if (on !== ".") px(data, ox + x, oy + y, color); }));
 }
-function pose(frame) {
-  if (frame < 8) return { bob: frame % 4 === 2 ? 1 : 0, arms: frame % 4 === 1 ? 1 : 0, legs: [0, 0] };
-  if (frame < 40) {
-    const phase = (frame - 8) % 8;
-    const direction = frame < 16 ? "up" : frame < 24 ? "down" : frame < 32 ? "left" : "right";
-    return { direction, bob: phase === 1 || phase === 5 ? 1 : 0, arms: phase < 4 ? -2 : 2, legs: phase < 2 ? [-2, 2] : phase < 4 ? [0, 0] : phase < 6 ? [2, -2] : [0, 0] };
-  }
-  if (frame < 44) return { bob: 2, arms: 0, legs: [2, 2], sit: true };
-  if (frame < 52) return { bob: 1, arms: frame % 2 ? 3 : 1, legs: [1, -1], typing: true };
-  if (frame < 56) return { bob: frame % 4 === 2 ? 0 : 1, arms: frame % 4 === 1 ? -4 : 2, legs: [0, 0], think: true };
-  if (frame < 62) return { bob: frame === 56 || frame === 61 ? 1 : 0, arms: [-2, -5, -8, -8, -5, -2][frame - 56], legs: [0, 0], celebrate: true };
-  if (frame < 66) return { bob: 0, arms: [-2, -7, -10, -4][frame - 62], legs: [0, 0], wave: true };
-  if (frame < 72) return { bob: 3, arms: 1, legs: [2, 2], sleep: true };
-  return { bob: 0, arms: frame % 2 ? 2 : -1, legs: [0, 0], talk: true };
+export function poseForFrame(frame, animationManifest = manifest) {
+  const animation = animationManifest.animations.find((candidate) => frame >= candidate.start && frame < candidate.start + candidate.frames);
+  if (!animation) throw new Error(`No manifest animation covers frame ${frame}.`);
+  const phase = frame - animation.start;
+  if (animation.name === "idle") return { bob: phase % 4 === 2 ? 1 : 0, arms: phase % 4 === 1 ? 1 : 0, legs: [0, 0] };
+  if (animation.name.startsWith("walk-")) return { direction: animation.name.slice(5), bob: phase === 1 || phase === 5 ? 1 : 0, arms: phase < 4 ? -2 : 2, legs: phase < 2 ? [-2, 2] : phase < 4 ? [0, 0] : phase < 6 ? [2, -2] : [0, 0] };
+  if (animation.name === "sit") return { bob: 2, arms: 0, legs: [2, 2], sit: true };
+  if (animation.name === "typing") return { bob: 1, arms: phase % 2 ? 3 : 1, legs: [1, -1], typing: true };
+  if (animation.name === "thinking") return { bob: phase % 4 === 2 ? 0 : 1, arms: phase % 4 === 1 ? -4 : 2, legs: [0, 0], think: true };
+  if (animation.name === "celebrate") return { bob: phase === 0 || phase === animation.frames - 1 ? 1 : 0, arms: [-2, -5, -8, -8, -5, -2][phase], legs: [0, 0], celebrate: true };
+  if (animation.name === "wave") return { bob: 0, arms: [-2, -7, -10, -4][phase], legs: [0, 0], wave: true };
+  if (animation.name === "sleep") return { bob: 3, arms: 1, legs: [2, 2], sleep: true };
+  if (animation.name === "talk") return { bob: 0, arms: phase % 2 ? 2 : -1, legs: [0, 0], talk: true };
+  throw new Error(`No pose is defined for manifest animation ${animation.name}.`);
 }
 function drawBody(data, frame) {
   const cellX = (frame % 12) * CELL;
   const cellY = Math.floor(frame / 12) * CELL;
-  const p = pose(frame); const x = cellX + 8; const y = cellY + p.bob;
+  const p = poseForFrame(frame); const x = cellX + 8; const y = cellY + p.bob;
   // Head deliberately excludes hair, which is supplied by overlay atlases.
   shape(data, x + 6, y + 1, [".SSSS.", "SSSSSS", "SSSSSS", "SSSSSS", ".SSSS."], PALETTE.skin);
   if (p.direction === "up") rect(data, x + 8, y + 5, 4, 2, PALETTE.skinShade);
@@ -75,7 +76,7 @@ function drawBody(data, frame) {
   if (p.sleep) { rect(data, x + 15, y + 2, 2, 1, PALETTE.mint); rect(data, x + 17, y, 2, 1, PALETTE.mint); }
 }
 function drawHair(data, frame, style) {
-  const cellX = (frame % 12) * CELL; const cellY = Math.floor(frame / 12) * CELL; const p = pose(frame);
+  const cellX = (frame % 12) * CELL; const cellY = Math.floor(frame / 12) * CELL; const p = poseForFrame(frame);
   const x = cellX + 8; const y = cellY + p.bob; const color = PALETTE[style];
   if (style === "short") shape(data, x + 5, y, [".HHHHHH.", "HHHHHHHH", "HH....HH", "H......H"], color);
   if (style === "swept") shape(data, x + 4, y, ["..HHHHH.", ".HHHHHHH", "HHHH...H", "H......H", "......HH"], color);
@@ -99,8 +100,12 @@ function png(data) {
 }
 function write(name, draw) { const data = canvas(); for (const frame of usedFrames) draw(data, frame); writeFileSync(new URL(name, OUTPUT), png(data)); }
 
-mkdirSync(OUTPUT, { recursive: true });
-write("body.png", drawBody);
-write("hair-short.png", (data, frame) => drawHair(data, frame, "short"));
-write("hair-swept.png", (data, frame) => drawHair(data, frame, "swept"));
-write("hair-curly.png", (data, frame) => drawHair(data, frame, "curly"));
+export function generateAtlases() {
+  mkdirSync(OUTPUT, { recursive: true });
+  write("body.png", drawBody);
+  write("hair-short.png", (data, frame) => drawHair(data, frame, "short"));
+  write("hair-swept.png", (data, frame) => drawHair(data, frame, "swept"));
+  write("hair-curly.png", (data, frame) => drawHair(data, frame, "curly"));
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) generateAtlases();

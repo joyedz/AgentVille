@@ -141,6 +141,17 @@ test("renderer derives populated frame coverage from the manifest", async () => 
   assert.doesNotMatch(renderer, /frame < 76/);
 });
 
+test("renderer pose dispatch follows remapped manifest animation ranges", async () => {
+  const { poseForFrame } = await import(generatorPath.href);
+  const remapped = structuredClone(await loadManifest());
+  const idle = remapped.animations.find((animation: any) => animation.name === "idle");
+  const walkUp = remapped.animations.find((animation: any) => animation.name === "walk-up");
+  [idle.start, walkUp.start] = [walkUp.start, idle.start];
+
+  assert.equal(poseForFrame(0, remapped).direction, "up");
+  assert.equal(poseForFrame(8, remapped).direction, undefined);
+});
+
 test("every body frame keeps its feet on local baseline 27", async () => {
   const scanlines = await decodeAtlas("body.png");
   for (const cell of usedFrames(await loadManifest())) {
