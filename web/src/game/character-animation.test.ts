@@ -22,6 +22,26 @@ test("accepts the shipped character animation manifest", async () => {
   assert.deepEqual(validateCharacterManifest(manifest), []);
 });
 
+test("rejects incorrect required animation metadata, atlas cells, and anchor", async () => {
+  const validManifest = await loadManifest();
+  const invalidManifests = [
+    { mutate: (manifest: any) => { manifest.animations[0].start = 1; } },
+    { mutate: (manifest: any) => { manifest.animations[0].fps = 6; } },
+    { mutate: (manifest: any) => { manifest.animations[0].loop = false; } },
+    { mutate: (manifest: any) => { manifest.cell.width = 16; } },
+    { mutate: (manifest: any) => { manifest.cell.height = 16; } },
+    { mutate: (manifest: any) => { manifest.anchor.x = 15; } },
+    { mutate: (manifest: any) => { manifest.anchor.y = 27; } },
+  ];
+
+  for (const { mutate } of invalidManifests) {
+    const manifest = structuredClone(validManifest);
+    mutate(manifest);
+
+    assert.notDeepEqual(validateCharacterManifest(manifest), []);
+  }
+});
+
 test("resolves moving left to a looping walk-left animation", async () => {
   const manifest = await loadManifest();
 
