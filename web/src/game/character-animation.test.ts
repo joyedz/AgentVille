@@ -1,11 +1,15 @@
+// @vitest-environment node
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import { test } from "vitest";
 
 import {
+  animationStateForStatus,
+  directionForMovement,
+  hairAtlasForRole,
   resolveCharacterAnimation,
   validateCharacterManifest,
-} from "./character-animation.ts";
+} from "./character-animation.js";
 
 const manifestPath = new URL(
   "../../public/assets/characters/manifest.json",
@@ -90,4 +94,28 @@ test("resolves completed to a non-looping celebrate animation", async () => {
 
   assert.equal(resolved.name, "celebrate");
   assert.equal(resolved.animation.loop, false);
+});
+
+test("maps agent roles to their intended hair overlays", () => {
+  assert.equal(hairAtlasForRole("builder"), "hair-short");
+  assert.equal(hairAtlasForRole("tester"), "hair-swept");
+  assert.equal(hairAtlasForRole("documenter"), "hair-curly");
+  assert.equal(hairAtlasForRole("other"), "hair-short");
+});
+
+test("maps agent statuses to the scene animation states", () => {
+  assert.equal(animationStateForStatus("working"), "working");
+  assert.equal(animationStateForStatus("idle"), "sitting");
+  assert.equal(animationStateForStatus("blocked"), "talking");
+  assert.equal(animationStateForStatus("error"), "talking");
+  assert.equal(animationStateForStatus("paused"), "inactive");
+  assert.equal(animationStateForStatus("stopped"), "inactive");
+  assert.equal(animationStateForStatus("queued"), "waiting");
+});
+
+test("uses the dominant movement axis while retaining the last facing direction at rest", () => {
+  assert.equal(directionForMovement({ x: 0, y: 0 }, { x: 12, y: 4 }, "left"), "right");
+  assert.equal(directionForMovement({ x: 0, y: 0 }, { x: -12, y: 4 }, "right"), "left");
+  assert.equal(directionForMovement({ x: 0, y: 0 }, { x: 4, y: -12 }, "down"), "up");
+  assert.equal(directionForMovement({ x: 5, y: 5 }, { x: 5, y: 5 }, "left"), "left");
 });

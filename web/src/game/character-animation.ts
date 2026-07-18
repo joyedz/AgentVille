@@ -18,6 +18,14 @@ export interface ResolvedCharacterAnimation {
   animation: CharacterAnimation;
 }
 
+export type CharacterFacing = "up" | "down" | "left" | "right";
+
+export const CHARACTER_HAIR_BY_ROLE: Record<string, string> = {
+  builder: "hair-short",
+  tester: "hair-swept",
+  documenter: "hair-curly",
+};
+
 const REQUIRED_ANIMATIONS: Record<string, Omit<CharacterAnimation, "name">> = {
   idle: { start: 0, frames: 8, fps: 5, loop: true },
   "walk-up": { start: 8, frames: 8, fps: 10, loop: true },
@@ -180,4 +188,28 @@ export function resolveCharacterAnimation(
     ?? IDLE_FALLBACK;
 
   return { name: animation.name, animation };
+}
+
+export function hairAtlasForRole(role?: string): string {
+  return CHARACTER_HAIR_BY_ROLE[role?.toLowerCase() ?? ""] ?? "hair-short";
+}
+
+export function animationStateForStatus(status: string): string {
+  if (status === "working") return "working";
+  if (status === "idle") return "sitting";
+  if (status === "blocked" || status === "error") return "talking";
+  if (status === "paused" || status === "stopped") return "inactive";
+  return "waiting";
+}
+
+export function directionForMovement(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  lastFacing: CharacterFacing,
+): CharacterFacing {
+  const deltaX = to.x - from.x;
+  const deltaY = to.y - from.y;
+  if (Math.abs(deltaX) >= Math.abs(deltaY) && deltaX !== 0) return deltaX > 0 ? "right" : "left";
+  if (deltaY !== 0) return deltaY > 0 ? "down" : "up";
+  return lastFacing;
 }

@@ -1,6 +1,7 @@
+// @vitest-environment node
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import { test } from "vitest";
 
 const atlasDirectory = new URL("../../public/assets/characters/", import.meta.url);
 const manifestPath = new URL("../../public/assets/characters/manifest.json", import.meta.url);
@@ -29,8 +30,8 @@ async function loadManifest() {
   return JSON.parse(await readFile(manifestPath, "utf8"));
 }
 
-function usedFrames(manifest: any) {
-  return new Set(manifest.animations.flatMap((animation: any) =>
+function usedFrames(manifest: any): Set<number> {
+  return new Set<number>(manifest.animations.flatMap((animation: any) =>
     Array.from({ length: animation.frames }, (_, offset) => animation.start + offset),
   ));
 }
