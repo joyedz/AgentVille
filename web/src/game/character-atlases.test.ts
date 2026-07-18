@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const atlasDirectory = new URL("../../public/assets/characters/", import.meta.url);
+const manifestPath = new URL("../../public/assets/characters/manifest.json", import.meta.url);
+const generatorPath = new URL("../../../scripts/generate-character-atlases.mjs", import.meta.url);
 const atlasNames = ["body.png", "hair-short.png", "hair-swept.png", "hair-curly.png"];
 const width = 384;
 const height = 224;
@@ -21,6 +23,67 @@ function readPngHeader(bytes: Buffer) {
 
 async function readAtlas(name: string) {
   return readFile(new URL(name, atlasDirectory));
+}
+
+async function loadManifest() {
+  return JSON.parse(await readFile(manifestPath, "utf8"));
+}
+
+function usedFrames(manifest: any) {
+  return new Set(manifest.animations.flatMap((animation: any) =>
+    Array.from({ length: animation.frames }, (_, offset) => animation.start + offset),
+  ));
+}
+
+function cellOpacity(scanlines: Buffer, cell: number) {
+  const pixels = cellPixels(scanlines, cell);
+  let opaque = 0;
+  for (let offset = 3; offset < pixels.length; offset += 4) opaque += pixels[offset] > 0 ? 1 : 0;
+  return opaque;
+}
+
+function assertAtlasCoverage(scanlines: Buffer, manifest: any, name: string) {
+  const capacity = manifest.cell.columns * manifest.cell.rows;
+  const frames = usedFrames(manifest);
+  for (let cell = 0; cell < capacity; cell++) {
+    if (frames.has(cell)) assert.ok(cellOpacity(scanlines, cell) > 0, `${name} frame ${cell} must contain pixels`);
+    else assert.equal(cellOpacity(scanlines, cell), 0, `${name} non-frame cell ${cell} must be transparent`);
+  }
+}
+
+function largestSkinComponent(pixels: Buffer) {
+  const skin = (x: number, y: number) => {
+    const offset = (y * cellSize + x) * 4;
+    return pixels[offset] === 235 && pixels[offset + 1] === 181 && pixels[offset + 2] === 142 && pixels[offset + 3] > 0;
+  };
+  const seen = new Set<string>();
+  const components: Array<Array<[number, number]>> = [];
+  for (let y = 0; y < cellSize; y++) for (let x = 0; x < cellSize; x++) {
+    const key = `${x},${y}`;
+    if (!skin(x, y) || seen.has(key)) continue;
+    const component: Array<[number, number]> = [];
+    const queue: Array<[number, number]> = [[x, y]];
+    seen.add(key);
+    while (queue.length) {
+      const [currentX, currentY] = queue.pop()!;
+      component.push([currentX, currentY]);
+      for (const [nextX, nextY] of [[currentX - 1, currentY], [currentX + 1, currentY], [currentX, currentY - 1], [currentX, currentY + 1]]) {
+        const nextKey = `${nextX},${nextY}`;
+        if (nextX >= 0 && nextY >= 0 && nextX < cellSize && nextY < cellSize && skin(nextX, nextY) && !seen.has(nextKey)) {
+          seen.add(nextKey); queue.push([nextX, nextY]);
+        }
+      }
+    }
+    components.push(component);
+  }
+  const head = components.sort((left, right) => right.length - left.length)[0];
+  return { minX: Math.min(...head.map(([x]) => x)), maxX: Math.max(...head.map(([x]) => x)), minY: Math.min(...head.map(([, y]) => y)) };
+}
+
+function opaqueBounds(pixels: Buffer) {
+  const points: Array<[number, number]> = [];
+  for (let y = 0; y < cellSize; y++) for (let x = 0; x < cellSize; x++) if (pixels[(y * cellSize + x) * 4 + 3] > 0) points.push([x, y]);
+  return { minX: Math.min(...points.map(([x]) => x)), maxX: Math.max(...points.map(([x]) => x)), minY: Math.min(...points.map(([, y]) => y)) };
 }
 
 async function decodeAtlas(name: string) {
@@ -56,31 +119,50 @@ test("character atlases are 384 by 224 RGBA PNGs", async () => {
 });
 
 test("character atlas reserve cells are transparent and used cells are populated", async () => {
+  const manifest = await loadManifest();
   for (const name of atlasNames) {
     const scanlines = await decodeAtlas(name);
-    for (let cell = 0; cell < 84; cell++) {
-      const column = cell % 12;
-      const row = Math.floor(cell / 12);
-      let opaque = 0;
-      for (let y = row * cellSize; y < (row + 1) * cellSize; y++) {
-        const start = y * (1 + width * 4) + 1 + column * cellSize * 4;
-        for (let x = 0; x < cellSize; x++) opaque += scanlines[start + x * 4 + 3] > 0 ? 1 : 0;
-      }
-      if (cell < 76) assert.ok(opaque > 0, `${name} cell ${cell} must contain pixels`);
-      else assert.equal(opaque, 0, `${name} reserve cell ${cell} must be transparent`);
-    }
+    assertAtlasCoverage(scanlines, manifest, name);
   }
+});
+
+test("atlas coverage detects a manifest frame range mismatch", async () => {
+  const manifest = structuredClone(await loadManifest());
+  manifest.animations.find((animation: any) => animation.name === "talk").frames = 3;
+  const scanlines = await decodeAtlas("body.png");
+
+  assert.throws(() => assertAtlasCoverage(scanlines, manifest, "body.png"));
+});
+
+test("renderer derives populated frame coverage from the manifest", async () => {
+  const renderer = await readFile(generatorPath, "utf8");
+
+  assert.match(renderer, /readFileSync\(new URL\("\.\.\/web\/public\/assets\/characters\/manifest\.json"/);
+  assert.doesNotMatch(renderer, /frame < 76/);
 });
 
 test("every body frame keeps its feet on local baseline 27", async () => {
   const scanlines = await decodeAtlas("body.png");
-  for (let cell = 0; cell < 76; cell++) {
+  for (const cell of usedFrames(await loadManifest())) {
     const pixels = cellPixels(scanlines, cell);
     let lowerBound = -1;
     for (let y = 0; y < cellSize; y++) for (let x = 0; x < cellSize; x++) {
       if (pixels[(y * cellSize + x) * 4 + 3] > 0) lowerBound = y;
     }
     assert.equal(lowerBound, 27, `body cell ${cell} must end at local y=27`);
+  }
+});
+
+test("each hair overlay is registered around its body's head in every manifest frame", async () => {
+  const body = await decodeAtlas("body.png");
+  const hairAtlases = await Promise.all(atlasNames.slice(1).map(decodeAtlas));
+  for (const frame of usedFrames(await loadManifest())) {
+    const head = largestSkinComponent(cellPixels(body, frame));
+    for (const hair of hairAtlases) {
+      const bounds = opaqueBounds(cellPixels(hair, frame));
+      assert.equal(bounds.minY, head.minY - 1, `hair frame ${frame} must start one pixel above the head`);
+      assert.ok(bounds.minX <= head.minX && bounds.maxX >= head.maxX, `hair frame ${frame} must span the head`);
+    }
   }
 });
 

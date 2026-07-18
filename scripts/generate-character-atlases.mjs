@@ -1,10 +1,14 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 
 const WIDTH = 384;
 const HEIGHT = 224;
 const CELL = 32;
 const OUTPUT = new URL("../web/public/assets/characters/", import.meta.url);
+const manifest = JSON.parse(readFileSync(new URL("../web/public/assets/characters/manifest.json", import.meta.url), "utf8"));
+const usedFrames = new Set(manifest.animations.flatMap((animation) =>
+  Array.from({ length: animation.frames }, (_, offset) => animation.start + offset),
+));
 const PALETTE = {
   navy: [30, 53, 80, 255], ink: [17, 31, 47, 255], mint: [99, 214, 182, 255],
   skin: [235, 181, 142, 255], skinShade: [203, 137, 108, 255], shoe: [24, 35, 49, 255],
@@ -93,7 +97,7 @@ function png(data) {
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(WIDTH, 0); ihdr.writeUInt32BE(HEIGHT, 4); ihdr[8] = 8; ihdr[9] = 6;
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(scanlines)), chunk("IEND", Buffer.alloc(0))]);
 }
-function write(name, draw) { const data = canvas(); for (let frame = 0; frame < 76; frame++) draw(data, frame); writeFileSync(new URL(name, OUTPUT), png(data)); }
+function write(name, draw) { const data = canvas(); for (const frame of usedFrames) draw(data, frame); writeFileSync(new URL(name, OUTPUT), png(data)); }
 
 mkdirSync(OUTPUT, { recursive: true });
 write("body.png", drawBody);
