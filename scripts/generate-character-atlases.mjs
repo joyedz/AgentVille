@@ -26,7 +26,8 @@ function pose(frame) {
   if (frame < 8) return { bob: frame % 4 === 2 ? 1 : 0, arms: frame % 4 === 1 ? 1 : 0, legs: [0, 0] };
   if (frame < 40) {
     const phase = (frame - 8) % 8;
-    return { bob: phase === 1 || phase === 5 ? 1 : 0, arms: phase < 4 ? -2 : 2, legs: phase < 2 ? [-2, 2] : phase < 4 ? [0, 0] : phase < 6 ? [2, -2] : [0, 0] };
+    const direction = frame < 16 ? "up" : frame < 24 ? "down" : frame < 32 ? "left" : "right";
+    return { direction, bob: phase === 1 || phase === 5 ? 1 : 0, arms: phase < 4 ? -2 : 2, legs: phase < 2 ? [-2, 2] : phase < 4 ? [0, 0] : phase < 6 ? [2, -2] : [0, 0] };
   }
   if (frame < 44) return { bob: 2, arms: 0, legs: [2, 2], sit: true };
   if (frame < 52) return { bob: 1, arms: frame % 2 ? 3 : 1, legs: [1, -1], typing: true };
@@ -42,7 +43,10 @@ function drawBody(data, frame) {
   const p = pose(frame); const x = cellX + 8; const y = cellY + p.bob;
   // Head deliberately excludes hair, which is supplied by overlay atlases.
   shape(data, x + 6, y + 1, [".SSSS.", "SSSSSS", "SSSSSS", "SSSSSS", ".SSSS."], PALETTE.skin);
-  rect(data, x + 7, y + 5, 1, 1, PALETTE.ink); rect(data, x + 11, y + 5, 1, 1, PALETTE.ink);
+  if (p.direction === "up") rect(data, x + 8, y + 5, 4, 2, PALETTE.skinShade);
+  else if (p.direction === "left") { rect(data, x + 7, y + 5, 1, 1, PALETTE.ink); rect(data, x + 6, y + 7, 1, 1, PALETTE.skinShade); }
+  else if (p.direction === "right") { rect(data, x + 12, y + 5, 1, 1, PALETTE.ink); rect(data, x + 13, y + 7, 1, 1, PALETTE.skinShade); }
+  else { rect(data, x + 7, y + 5, 1, 1, PALETTE.ink); rect(data, x + 11, y + 5, 1, 1, PALETTE.ink); }
   if (p.talk && frame % 4 > 1) rect(data, x + 9, y + 8, 2, 1, PALETTE.skinShade);
   rect(data, x + 8, y + 10, 4, 2, PALETTE.skinShade);
   const torsoY = y + (p.sit ? 15 : 12);
@@ -60,9 +64,10 @@ function drawBody(data, frame) {
   }
   if (p.typing) { rect(data, x + 3, y + 20, 5, 1, PALETTE.skin); rect(data, x + 12, y + 20, 5, 1, PALETTE.skin); }
   const legY = p.sit ? y + 22 : y + 21;
-  rect(data, x + 6 + p.legs[0], legY, 3, p.sit ? 4 : 6, PALETTE.navy);
-  rect(data, x + 11 + p.legs[1], legY, 3, p.sit ? 4 : 6, PALETTE.navy);
-  rect(data, x + 5 + p.legs[0], y + 27, 5, 1, PALETTE.shoe); rect(data, x + 10 + p.legs[1], y + 27, 5, 1, PALETTE.shoe);
+  const legHeight = Math.max(1, Math.min(p.sit ? 4 : 6, cellY + 27 - legY));
+  rect(data, x + 6 + p.legs[0], legY, 3, legHeight, PALETTE.navy);
+  rect(data, x + 11 + p.legs[1], legY, 3, legHeight, PALETTE.navy);
+  rect(data, x + 5 + p.legs[0], cellY + 27, 5, 1, PALETTE.shoe); rect(data, x + 10 + p.legs[1], cellY + 27, 5, 1, PALETTE.shoe);
   if (p.sleep) { rect(data, x + 15, y + 2, 2, 1, PALETTE.mint); rect(data, x + 17, y, 2, 1, PALETTE.mint); }
 }
 function drawHair(data, frame, style) {

@@ -23,6 +23,31 @@ async function readAtlas(name: string) {
   return readFile(new URL(name, atlasDirectory));
 }
 
+async function decodeAtlas(name: string) {
+  const zlib = await import("node:zlib");
+  const bytes = await readAtlas(name);
+  let cursor = 8;
+  const chunks: Buffer[] = [];
+  while (cursor < bytes.length) {
+    const size = bytes.readUInt32BE(cursor);
+    const type = bytes.toString("ascii", cursor + 4, cursor + 8);
+    if (type === "IDAT") chunks.push(bytes.subarray(cursor + 8, cursor + 8 + size));
+    cursor += size + 12;
+  }
+  return zlib.inflateSync(Buffer.concat(chunks));
+}
+
+function cellPixels(scanlines: Buffer, cell: number) {
+  const column = cell % 12;
+  const row = Math.floor(cell / 12);
+  const pixels: number[] = [];
+  for (let y = row * cellSize; y < (row + 1) * cellSize; y++) {
+    const start = y * (1 + width * 4) + 1 + column * cellSize * 4;
+    for (let x = 0; x < cellSize * 4; x++) pixels.push(scanlines[start + x]);
+  }
+  return Buffer.from(pixels);
+}
+
 test("character atlases are 384 by 224 RGBA PNGs", async () => {
   for (const name of atlasNames) {
     const header = readPngHeader(await readAtlas(name));
@@ -31,18 +56,8 @@ test("character atlases are 384 by 224 RGBA PNGs", async () => {
 });
 
 test("character atlas reserve cells are transparent and used cells are populated", async () => {
-  const zlib = await import("node:zlib");
   for (const name of atlasNames) {
-    const bytes = await readAtlas(name);
-    let cursor = 8;
-    const chunks: Buffer[] = [];
-    while (cursor < bytes.length) {
-      const size = bytes.readUInt32BE(cursor);
-      const type = bytes.toString("ascii", cursor + 4, cursor + 8);
-      if (type === "IDAT") chunks.push(bytes.subarray(cursor + 8, cursor + 8 + size));
-      cursor += size + 12;
-    }
-    const scanlines = zlib.inflateSync(Buffer.concat(chunks));
+    const scanlines = await decodeAtlas(name);
     for (let cell = 0; cell < 84; cell++) {
       const column = cell % 12;
       const row = Math.floor(cell / 12);
@@ -53,6 +68,30 @@ test("character atlas reserve cells are transparent and used cells are populated
       }
       if (cell < 76) assert.ok(opaque > 0, `${name} cell ${cell} must contain pixels`);
       else assert.equal(opaque, 0, `${name} reserve cell ${cell} must be transparent`);
+    }
+  }
+});
+
+test("every body frame keeps its feet on local baseline 27", async () => {
+  const scanlines = await decodeAtlas("body.png");
+  for (let cell = 0; cell < 76; cell++) {
+    const pixels = cellPixels(scanlines, cell);
+    let lowerBound = -1;
+    for (let y = 0; y < cellSize; y++) for (let x = 0; x < cellSize; x++) {
+      if (pixels[(y * cellSize + x) * 4 + 3] > 0) lowerBound = y;
+    }
+    assert.equal(lowerBound, 27, `body cell ${cell} must end at local y=27`);
+  }
+});
+
+test("walk directions use distinct rendered frame sequences", async () => {
+  const scanlines = await decodeAtlas("body.png");
+  const sequences = [8, 16, 24, 32].map((start) => Buffer.concat(
+    Array.from({ length: 8 }, (_, offset) => cellPixels(scanlines, start + offset)),
+  ));
+  for (let index = 0; index < sequences.length; index++) {
+    for (let other = index + 1; other < sequences.length; other++) {
+      assert.notDeepEqual(sequences[index], sequences[other]);
     }
   }
 });
