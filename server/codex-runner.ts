@@ -29,8 +29,15 @@ export class CodexRunner {
     private readonly agentId: string,
     private readonly cwd: string,
     private readonly execute: ProcessExecutor,
-    private readonly emit: (event: RunnerEvent) => void
-  ) {}
+    private readonly emit: (event: RunnerEvent) => void,
+    initialStatus?: string
+  ) {
+    // Keep a recreated runner consistent with the persisted agent status so an
+    // assignment is not rejected by stale in-memory flags after a restart.
+    if (initialStatus === 'paused') this.paused = true;
+    else if (initialStatus === 'working') this.working = true;
+    else if (initialStatus === 'stopped') this.stopped = true;
+  }
 
   async runNext() {
     if (this.stopped || this.paused || this.executing) return;

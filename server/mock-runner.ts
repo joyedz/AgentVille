@@ -21,8 +21,33 @@ export class MockRunner implements Runner {
   constructor(
     private readonly agentId: string,
     private readonly emit: Emit,
-    private readonly checkpoints: string[]
-  ) {}
+    private readonly checkpoints: string[],
+    initialStatus?: string
+  ) {
+    // Align internal state with a persisted/recovered agent status so a runner
+    // recreated on restart agrees with the stored status (e.g. a 'stopped'
+    // agent stays assignable instead of looking like a fresh mid-plan runner).
+    switch (initialStatus) {
+      case 'stopped':
+        this.stopped = true;
+        break;
+      case 'paused':
+        this.paused = true;
+        break;
+      case 'blocked':
+        this.blocked = true;
+        break;
+      case 'working':
+        this.working = true;
+        break;
+      case 'idle':
+      case 'error':
+        this.index = checkpoints.length;
+        break;
+      default:
+        break;
+    }
+  }
 
   async runNext(): Promise<void> {
     if (this.stopped || this.paused) return;

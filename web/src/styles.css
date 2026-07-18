@@ -27,10 +27,17 @@ h2 { color: #f8fafc; font-size: 24px; }
 .workspace { max-width: 1300px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 290px); gap: 18px; align-items: start; }
 .map-panel, .inspector { border: 1px solid #1e293b; border-radius: 16px; background: #0d1726; box-shadow: 0 20px 60px rgb(2 6 23 / .35); }
 .map-panel { min-width: 0; padding: 14px; }
-.office-map { width: 100%; min-height: 400px; aspect-ratio: 1.5; overflow: hidden; border-radius: 10px; background: #0f172a; }
-.office-map canvas { display: block; width: 100% !important; height: 100% !important; }
+.office-map { position: relative; width: 100%; min-height: 360px; aspect-ratio: 3 / 2; overflow: hidden; border: 2px solid #2b4560; border-radius: 12px; background: #0f172a; box-shadow: inset 0 0 0 1px rgb(148 163 184 / .08), 0 12px 28px rgb(2 6 23 / .3); }
+.office-map canvas { display: block; width: 100% !important; height: 100% !important; image-rendering: pixelated; image-rendering: crisp-edges; }
+.visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 .map-hint { margin: 11px 5px 0; color: #64748b; font-size: 12px; }
 .desk-notice { margin: 5px 5px 0; color: #ffd37a; font-size: 11px; }
+.agent-roster { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 5px 2px; }
+.roster-empty { margin: 12px 5px 2px; color: #64748b; font-size: 12px; }
+.roster-item { display: inline-flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #1e334d; border-radius: 8px; background: #111f31; color: #dce8f2; font-size: 12px; font-weight: 600; }
+.roster-item:hover:not(:disabled) { border-color: #2b4560; background: #16273c; }
+.roster-item-active { border-color: #61e6b5; box-shadow: 0 0 0 1px #61e6b5 inset; }
+.roster-name { letter-spacing: -.01em; }
 .inspector { min-height: 240px; padding: 20px; }
 .inspector-empty { color: #94a3b8; line-height: 1.55; }
 .agent-role { color: #7dd3fc !important; text-transform: capitalize; }
@@ -85,5 +92,5 @@ input:focus { border-color: #61e6b5; box-shadow: 0 0 0 2px rgb(97 230 181 / .18)
   .app-header { align-items: flex-start; flex-direction: column; }
   .status-pills { justify-content: flex-start; }
   .workspace { grid-template-columns: 1fr; }
-  .office-map { aspect-ratio: 1.35; }
+  .office-map { aspect-ratio: 3 / 2; }
 }

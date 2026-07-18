@@ -16,6 +16,10 @@ Run `codex --version` and a small `codex exec` task first. Then set `AGENTVILLE_
 
 If Codex cannot start, the UI receives an actionable error event and you can return to mock mode by setting `AGENTVILLE_MODE=mock`.
 
+## Visual refresh
+
+The office map uses hand-authored pixel-art assets in `web/public/assets/office/`. Phaser renders the 960x640 scene with nearest-neighbor scaling so the room framing and sprites stay crisp at responsive sizes. This is a presentation-only refresh: existing `.agentville/workspaces/<agent-id>` copies remain preserved across restarts and visual updates.
+
 ## Recovery
 
 Agent and command snapshots are persisted in SQLite. On restart, agents that were marked `working` are changed to `paused` at their last checkpoint so work is never silently resumed. Review the checkpoint, then explicitly resume or stop the agent.
