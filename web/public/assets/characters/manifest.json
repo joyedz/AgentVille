@@ -1,0 +1,30 @@
+{
+  "cell": { "width": 32, "height": 32, "columns": 12, "rows": 7 },
+  "anchor": { "x": 16, "y": 28 },
+  "animations": [
+    { "name": "idle", "start": 0, "frames": 8, "fps": 5, "loop": true },
+    { "name": "walk-up", "start": 8, "frames": 8, "fps": 10, "loop": true },
+    { "name": "walk-down", "start": 16, "frames": 8, "fps": 10, "loop": true },
+    { "name": "walk-left", "start": 24, "frames": 8, "fps": 10, "loop": true },
+    { "name": "walk-right", "start": 32, "frames": 8, "fps": 10, "loop": true },
+    { "name": "sit", "start": 40, "frames": 4, "fps": 6, "loop": true },
+    { "name": "typing", "start": 44, "frames": 8, "fps": 10, "loop": true },
+    { "name": "thinking", "start": 52, "frames": 4, "fps": 5, "loop": true },
+    { "name": "celebrate", "start": 56, "frames": 6, "fps": 10, "loop": false },
+    { "name": "wave", "start": 62, "frames": 4, "fps": 8, "loop": false },
+    { "name": "sleep", "start": 66, "frames": 6, "fps": 6, "loop": true },
+    { "name": "talk", "start": 72, "frames": 4, "fps": 8, "loop": true }
+  ],
+  "stateMap": {
+    "waiting": "idle",
+    "moving": "walk",
+    "inspecting": "thinking",
+    "planning": "thinking",
+    "working": "typing",
+    "sitting": "sit",
+    "inactive": "sleep",
+    "talking": "talk",
+    "starting": "wave",
+    "completed": "celebrate"
+  }
+}
