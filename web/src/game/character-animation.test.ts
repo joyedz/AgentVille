@@ -42,6 +42,29 @@ test("rejects incorrect required animation metadata, atlas cells, and anchor", a
   }
 });
 
+test("rejects malformed animation entries", async () => {
+  const manifest = structuredClone(await loadManifest());
+  manifest.animations.push(null);
+
+  assert.notDeepEqual(validateCharacterManifest(manifest), []);
+});
+
+test("rejects missing or invalid interaction-state mappings", async () => {
+  const validManifest = await loadManifest();
+  const invalidManifests = [
+    { mutate: (manifest: any) => { delete manifest.stateMap; } },
+    { mutate: (manifest: any) => { delete manifest.stateMap.working; } },
+    { mutate: (manifest: any) => { manifest.stateMap.working = "missing-animation"; } },
+  ];
+
+  for (const { mutate } of invalidManifests) {
+    const manifest = structuredClone(validManifest);
+    mutate(manifest);
+
+    assert.notDeepEqual(validateCharacterManifest(manifest), []);
+  }
+});
+
 test("resolves moving left to a looping walk-left animation", async () => {
   const manifest = await loadManifest();
 

@@ -35,6 +35,18 @@ const REQUIRED_ANIMATIONS: Record<string, Omit<CharacterAnimation, "name">> = {
 
 const REQUIRED_CELL = { width: 32, height: 32, columns: 12, rows: 7 };
 const REQUIRED_ANCHOR = { x: 16, y: 28 };
+const REQUIRED_STATES = [
+  "waiting",
+  "moving",
+  "inspecting",
+  "planning",
+  "working",
+  "sitting",
+  "inactive",
+  "talking",
+  "starting",
+  "completed",
+];
 
 const IDLE_FALLBACK: CharacterAnimation = {
   name: "idle",
@@ -46,6 +58,23 @@ const IDLE_FALLBACK: CharacterAnimation = {
 
 function isManifest(value: unknown): value is CharacterManifest {
   return typeof value === "object" && value !== null;
+}
+
+function isCharacterAnimation(value: unknown): value is CharacterAnimation {
+  if (typeof value !== "object" || value === null) return false;
+
+  const animation = value as Partial<CharacterAnimation>;
+  return (
+    typeof animation.name === "string" &&
+    Number.isInteger(animation.start) &&
+    Number.isInteger(animation.frames) &&
+    Number.isFinite(animation.fps) &&
+    typeof animation.loop === "boolean"
+  );
+}
+
+function isStateMap(value: unknown): value is Record<string, string> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function validateCharacterManifest(manifest: unknown): string[] {
@@ -79,6 +108,23 @@ export function validateCharacterManifest(manifest: unknown): string[] {
     return [...errors, "Manifest must define animations."];
   }
 
+  if (!animations.every(isCharacterAnimation)) {
+    errors.push("Every animation entry must be well formed.");
+  }
+
+  for (const animation of animations) {
+    if (
+      !isCharacterAnimation(animation) ||
+      animation.start < 0 ||
+      animation.frames <= 0 ||
+      animation.fps <= 0 ||
+      (Number.isInteger(capacity) && animation.start + animation.frames > capacity)
+    ) {
+      errors.push("Animation entries must reference frames inside the atlas.");
+      break;
+    }
+  }
+
   for (const [name, required] of Object.entries(REQUIRED_ANIMATIONS)) {
     const animation = animations.find((candidate) => candidate?.name === name);
     if (!animation) {
@@ -101,6 +147,18 @@ export function validateCharacterManifest(manifest: unknown): string[] {
       (Number.isInteger(capacity) && animation.start + animation.frames > capacity)
     ) {
       errors.push(`Animation ${name} references frames outside the atlas.`);
+    }
+  }
+
+  if (!isStateMap(manifest.stateMap)) {
+    errors.push("Manifest must define an interaction state map.");
+  } else {
+    const validTargets = new Set(animations.filter(isCharacterAnimation).map((animation) => animation.name));
+    for (const state of REQUIRED_STATES) {
+      const target = manifest.stateMap[state];
+      if (target !== "walk" && !validTargets.has(target)) {
+        errors.push(`State ${state} must map to a valid animation target.`);
+      }
     }
   }
 
