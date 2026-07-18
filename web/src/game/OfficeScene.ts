@@ -17,6 +17,9 @@ export type OfficeAgent = {
   role?: string;
   status: string;
   zone: Zone;
+  currentTaskId?: string;
+  checkpoint?: string;
+  summary?: string;
 };
 
 type AgentView = {
@@ -31,6 +34,9 @@ type AgentView = {
   motionGeneration: number;
   hairTexture: string;
   statusState: string;
+  previousAgent: OfficeAgent;
+  transitionState: string | null;
+  pendingTransitionState: string | null;
   activeAnimation: string | null;
   lastFacing: CharacterFacing;
 };
@@ -55,6 +61,20 @@ const backgroundDepth = 0;
 const agentDepth = 2;
 const characterSheet = { frameWidth: 32, frameHeight: 32 };
 const characterHairTextures = ['hair-short', 'hair-swept', 'hair-curly'];
+
+function statusStateForAgent(agent: OfficeAgent): string {
+  const checkpoint = agent.checkpoint?.trim().toLowerCase();
+  if (agent.status === 'working' && checkpoint === 'inspect') return 'inspecting';
+  if (agent.status === 'working' && checkpoint === 'planning') return 'planning';
+  return animationStateForStatus(agent.status);
+}
+
+function transitionStateForAgent(previous: OfficeAgent, next: OfficeAgent): string | undefined {
+  if (next.currentTaskId && next.currentTaskId !== previous.currentTaskId) return 'starting';
+  if (previous.status === 'blocked' && next.status === 'working') return 'completed';
+  if (previous.status === 'working' && next.status === 'idle') return 'completed';
+  return undefined;
+}
 
 function toHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
@@ -135,7 +155,7 @@ export class OfficeScene extends Phaser.Scene {
       const target = seatFor(agent);
       const color = statusColors[agent.status] ?? zoneColors[agent.zone];
       const hairTexture = hairAtlasForRole(agent.role);
-      const statusState = animationStateForStatus(agent.status);
+      const statusState = statusStateForAgent(agent);
       const existing = this.views.get(agent.id);
 
       if (!existing) {
@@ -182,6 +202,9 @@ export class OfficeScene extends Phaser.Scene {
           motionGeneration: 0,
           hairTexture,
           statusState,
+          previousAgent: { ...agent },
+          transitionState: null,
+          pendingTransitionState: null,
           activeAnimation: null,
           lastFacing: 'down'
         });
@@ -194,8 +217,16 @@ export class OfficeScene extends Phaser.Scene {
           existing.hairTexture = hairTexture;
           existing.activeAnimation = null;
         }
+        const transitionState = transitionStateForAgent(existing.previousAgent, agent);
+        existing.previousAgent = { ...agent };
         existing.statusState = statusState;
-        if (!existing.motionTween) this.playCharacterAnimation(existing, statusState);
+        if (transitionState && (targetChanged || existing.motionTween)) {
+          existing.pendingTransitionState = transitionState;
+        } else if (transitionState && !existing.motionTween) {
+          this.playTransitionAnimation(existing, transitionState);
+        } else if (!existing.motionTween && !existing.transitionState && !existing.pendingTransitionState) {
+          this.playCharacterAnimation(existing, statusState);
+        }
         existing.label.setText(agent.name);
         existing.marker.setText(agent.status.toUpperCase());
         existing.marker.setBackgroundColor(toHexColor(color));
@@ -213,7 +244,7 @@ export class OfficeScene extends Phaser.Scene {
 
   private startAgentMotion(view: AgentView, target: { x: number; y: number }): void {
     // Retargeting first cancels the old tween and restores the current status.
-    this.stopAgentMotion(view);
+    this.stopAgentMotion(view, false);
     const previousTarget = view.target;
     view.target = target;
     const motionGeneration = view.motionGeneration;
@@ -235,13 +266,20 @@ export class OfficeScene extends Phaser.Scene {
     this.stopAgentMotion(view);
   }
 
-  private stopAgentMotion(view: AgentView): void {
+  private stopAgentMotion(view: AgentView, restoreAnimation = true): void {
     const tween = view.motionTween;
     view.motionTween = null;
     // Invalidate callbacks before stopping a Phaser tween, which can emit onStop.
     view.motionGeneration += 1;
     tween?.stop();
-    this.playCharacterAnimation(view, view.statusState);
+    if (!restoreAnimation) return;
+    const transitionState = view.pendingTransitionState;
+    view.pendingTransitionState = null;
+    if (transitionState) {
+      this.playTransitionAnimation(view, transitionState);
+    } else if (!view.transitionState) {
+      this.playCharacterAnimation(view, view.statusState);
+    }
   }
 
   private ensureCharacterAnimations(): void {
@@ -270,6 +308,19 @@ export class OfficeScene extends Phaser.Scene {
     view.activeAnimation = animation.name;
     view.body.play(`character-body-${animation.name}`);
     view.hair.play(`${view.hairTexture}-${animation.name}`);
+  }
+
+  private playTransitionAnimation(view: AgentView, state: string): void {
+    if (view.transitionState) return;
+    view.transitionState = state;
+    view.activeAnimation = null;
+    this.playCharacterAnimation(view, state);
+    view.body.once('animationcomplete', () => {
+      if (view.transitionState !== state) return;
+      view.transitionState = null;
+      view.activeAnimation = null;
+      if (!view.motionTween) this.playCharacterAnimation(view, view.statusState);
+    });
   }
 
   private drawOffice(): void {

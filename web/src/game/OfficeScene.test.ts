@@ -83,7 +83,8 @@ function prepareScene(onAgentSelected = vi.fn()) {
         setFrame: vi.fn().mockReturnThis(),
         setScale: vi.fn().mockReturnThis(),
         setTexture: vi.fn().mockReturnThis(),
-        play: vi.fn().mockReturnThis()
+        play: vi.fn().mockReturnThis(),
+        once: vi.fn().mockReturnThis()
       };
       sprites.push(sprite);
       return sprite;
@@ -213,6 +214,58 @@ describe('OfficeScene pixel office background', () => {
     scene.updateAgents([{ id: status, name: status, status, zone: 'desk' }]);
     expect(sprites[0]?.play).toHaveBeenCalledWith(`character-body-${animation}`);
     expect(sprites[1]?.play).toHaveBeenCalledWith(`hair-short-${animation}`);
+  });
+
+  it.each(['inspect', 'planning'])('uses the thinking pose for a working %s checkpoint', (checkpoint) => {
+    const { scene, sprites } = prepareScene();
+    scene.updateAgents([{ ...builderAtDesk, checkpoint }]);
+
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-thinking');
+    expect(sprites[1]?.play).toHaveBeenLastCalledWith('hair-short-thinking');
+  });
+
+  it('plays the wave once when an existing agent begins a new task', () => {
+    const { scene, sprites } = prepareScene();
+    scene.updateAgents([{ ...builderAtDesk, status: 'idle', currentTaskId: 'task-old', checkpoint: 'ready' }]);
+    vi.clearAllMocks();
+
+    const taskStarted = { ...builderAtDesk, currentTaskId: 'task-new', checkpoint: 'implement' };
+    scene.updateAgents([taskStarted]);
+    scene.updateAgents([taskStarted]);
+
+    expect(sprites[0]?.play).toHaveBeenCalledTimes(1);
+    expect(sprites[0]?.play).toHaveBeenCalledWith('character-body-wave');
+    expect(sprites[1]?.play).toHaveBeenCalledTimes(1);
+    expect(sprites[1]?.play).toHaveBeenCalledWith('hair-short-wave');
+  });
+
+  it('plays a queued task-start wave after the agent arrives at its new zone', () => {
+    const { scene, sprites, tweenConfigs } = prepareScene();
+    scene.updateAgents([{ ...builderAtDesk, status: 'idle', zone: 'lounge', currentTaskId: 'task-old', checkpoint: 'ready' }]);
+    vi.clearAllMocks();
+
+    scene.updateAgents([{ ...builderAtDesk, currentTaskId: 'task-new', checkpoint: 'implement' }]);
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-walk-left');
+    tweenConfigs[0]?.onComplete?.();
+
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-wave');
+  });
+
+  it.each([
+    ['approval', { ...builderAtDesk, status: 'blocked', checkpoint: 'approval', currentTaskId: 'task-a' }, { ...builderAtDesk, checkpoint: 'implement', currentTaskId: 'task-a' }],
+    ['completion', { ...builderAtDesk, checkpoint: 'implement', currentTaskId: 'task-a' }, { ...builderAtDesk, status: 'idle', checkpoint: 'implement', currentTaskId: 'task-a' }]
+  ])('plays celebrate once after task %s', (_transition, before, after) => {
+    const { scene, sprites } = prepareScene();
+    scene.updateAgents([before]);
+    vi.clearAllMocks();
+
+    scene.updateAgents([after]);
+    scene.updateAgents([after]);
+
+    expect(sprites[0]?.play).toHaveBeenCalledTimes(1);
+    expect(sprites[0]?.play).toHaveBeenCalledWith('character-body-celebrate');
+    expect(sprites[1]?.play).toHaveBeenCalledTimes(1);
+    expect(sprites[1]?.play).toHaveBeenCalledWith('hair-short-celebrate');
   });
 
   it('chooses the role hair overlay and preserves label/marker children above its body layers', () => {
