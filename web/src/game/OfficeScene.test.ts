@@ -6,7 +6,9 @@ vi.mock('phaser', () => {
     cameras = { main: { setBackgroundColor: vi.fn() } };
     events = { once: vi.fn() };
     input = { keyboard: { on: vi.fn(), off: vi.fn() } };
-    load = { image: vi.fn(), spritesheet: vi.fn() };
+    load = { image: vi.fn(), json: vi.fn(), spritesheet: vi.fn() };
+    cache = { json: { get: vi.fn() } };
+    anims = { create: vi.fn(), generateFrameNumbers: vi.fn(), exists: vi.fn() };
     tweens = { add: vi.fn() };
     time = { addEvent: vi.fn() };
   }
@@ -22,8 +24,9 @@ vi.mock('phaser', () => {
 });
 
 import Phaser from 'phaser';
-import { agentPresentation, agentSprite, officeAssetManifest, officeCanvas } from './office-assets.js';
+import { officeAssetManifest, officeCanvas } from './office-assets.js';
 import { createOfficeGame, OfficeScene } from './OfficeScene.js';
+import type { CharacterManifest } from './character-animation.js';
 
 type TimerConfig = { delay: number; loop: boolean; callback: () => void };
 type TweenConfig = { duration: number; x?: number; y?: number; onComplete?: () => void; onStop?: () => void };
@@ -45,6 +48,15 @@ function prepareScene(onAgentSelected = vi.fn()) {
   const tweenConfigs: TweenConfig[] = [];
   const tweens: Array<{ stop: ReturnType<typeof vi.fn> }> = [];
   const image = { setOrigin: vi.fn().mockReturnThis(), setDepth: vi.fn().mockReturnThis() };
+  const manifest: CharacterManifest = {
+    cell: { width: 32, height: 32, columns: 12, rows: 7 }, anchor: { x: 16, y: 28 },
+    animations: [
+      { name: 'idle', start: 0, frames: 8, fps: 5, loop: true }, { name: 'walk-up', start: 8, frames: 8, fps: 10, loop: true }, { name: 'walk-down', start: 16, frames: 8, fps: 10, loop: true }, { name: 'walk-left', start: 24, frames: 8, fps: 10, loop: true }, { name: 'walk-right', start: 32, frames: 8, fps: 10, loop: true }, { name: 'sit', start: 40, frames: 4, fps: 6, loop: true }, { name: 'typing', start: 44, frames: 8, fps: 10, loop: true }, { name: 'thinking', start: 52, frames: 4, fps: 5, loop: true }, { name: 'celebrate', start: 56, frames: 6, fps: 10, loop: false }, { name: 'wave', start: 62, frames: 4, fps: 8, loop: false }, { name: 'sleep', start: 66, frames: 6, fps: 6, loop: true }, { name: 'talk', start: 72, frames: 4, fps: 8, loop: true }
+    ],
+    stateMap: { waiting: 'idle', moving: 'walk', inspecting: 'thinking', planning: 'thinking', working: 'typing', sitting: 'sit', inactive: 'sleep', talking: 'talk', starting: 'wave', completed: 'celebrate' }
+  };
+  (scene.cache.json.get as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
+  (scene.anims.generateFrameNumbers as ReturnType<typeof vi.fn>).mockImplementation((texture: string, range: unknown) => [{ texture, range }]);
 
   (scene.time.addEvent as ReturnType<typeof vi.fn>).mockImplementation((config: TimerConfig) => {
     timerConfigs.push(config);
@@ -70,7 +82,8 @@ function prepareScene(onAgentSelected = vi.fn()) {
         setOrigin: vi.fn().mockReturnThis(),
         setFrame: vi.fn().mockReturnThis(),
         setScale: vi.fn().mockReturnThis(),
-        setTexture: vi.fn().mockReturnThis()
+        setTexture: vi.fn().mockReturnThis(),
+        play: vi.fn().mockReturnThis()
       };
       sprites.push(sprite);
       return sprite;
@@ -103,13 +116,15 @@ const builderAtDesk = { id: 'builder', name: 'Builder', status: 'working', zone:
 describe('OfficeScene pixel office background', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('preloads every office asset from the manifest', () => {
+  it('preloads the office surface plus modular body and hair character atlases', () => {
     const scene = new OfficeScene(vi.fn());
     scene.preload();
     expect(scene.load.image).toHaveBeenCalledWith('office-background', officeAssetManifest.background);
-    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-builder', officeAssetManifest.agents.builder, agentSprite);
-    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-tester', officeAssetManifest.agents.tester, agentSprite);
-    expect(scene.load.spritesheet).toHaveBeenCalledWith('agent-documenter', officeAssetManifest.agents.documenter, agentSprite);
+    expect(scene.load.json).toHaveBeenCalledWith('character-manifest', '/assets/characters/manifest.json');
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('character-body', '/assets/characters/body.png', { frameWidth: 32, frameHeight: 32 });
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('hair-short', '/assets/characters/hair-short.png', { frameWidth: 32, frameHeight: 32 });
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('hair-swept', '/assets/characters/hair-swept.png', { frameWidth: 32, frameHeight: 32 });
+    expect(scene.load.spritesheet).toHaveBeenCalledWith('hair-curly', '/assets/characters/hair-curly.png', { frameWidth: 32, frameHeight: 32 });
     expect(scene.load.image).toHaveBeenCalledWith('office-status-markers', officeAssetManifest.markers);
     expect(scene.load.image).toHaveBeenCalledWith('office-props', officeAssetManifest.props);
     expect(scene.load.image).toHaveBeenCalledWith('office-nameplates', officeAssetManifest.nameplates);
@@ -187,80 +202,72 @@ describe('OfficeScene pixel office background', () => {
   });
 
   it.each([
-    ['idle', 0],
-    ['stopped', 0],
-    ['working', 1],
-    ['blocked', 2],
-    ['error', 2],
-    ['paused', 3]
-  ])('maps stationary status %s to frame %i', (status, frame) => {
+    ['idle', 'sit'],
+    ['stopped', 'sleep'],
+    ['working', 'typing'],
+    ['blocked', 'talk'],
+    ['error', 'talk'],
+    ['paused', 'sleep']
+  ])('maps stationary status %s to the %s body and hair animation', (status, animation) => {
     const { scene, sprites } = prepareScene();
     scene.updateAgents([{ id: status, name: status, status, zone: 'desk' }]);
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(frame);
+    expect(sprites[0]?.play).toHaveBeenCalledWith(`character-body-${animation}`);
+    expect(sprites[1]?.play).toHaveBeenCalledWith(`hair-short-${animation}`);
   });
 
-  it('chooses the role texture and preserves label/marker children above its body', () => {
+  it('chooses the role hair overlay and preserves label/marker children above its body layers', () => {
     const { scene, sprites } = prepareScene();
     scene.updateAgents([{ id: 'tester', name: 'Tester', role: 'Tester', status: 'working', zone: 'desk' }]);
-    expect(scene.add.sprite).toHaveBeenCalledWith(0, 0, 'agent-tester', 0);
-    expect(sprites[0]?.setScale).toHaveBeenCalledWith(agentPresentation.scale);
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(1);
+    expect(scene.add.sprite).toHaveBeenCalledWith(0, 0, 'character-body', 0);
+    expect(scene.add.sprite).toHaveBeenCalledWith(0, 0, 'hair-swept', 0);
+    expect(sprites[0]?.play).toHaveBeenCalledWith('character-body-typing');
+    expect(sprites[1]?.play).toHaveBeenCalledWith('hair-swept-typing');
     expect(scene.add.container).toHaveBeenCalledWith(330, 335, expect.any(Array));
     const children = (scene.add.container as ReturnType<typeof vi.fn>).mock.calls[0]?.[2] as unknown[];
     expect(children[1]).toBe((scene.add.sprite as ReturnType<typeof vi.fn>).mock.results[0]?.value);
-    expect(children).toHaveLength(4);
+    expect(children[2]).toBe((scene.add.sprite as ReturnType<typeof vi.fn>).mock.results[1]?.value);
+    expect(children).toHaveLength(5);
   });
 
-  it('shows frame 4 synchronously, advances frames 5–7 every 90 ms, and restores status on completion', () => {
-    const { scene, sprites, timerConfigs, tweenConfigs, timers } = prepareScene();
+  it('plays matched directional walk layers and restores status on completion', () => {
+    const { scene, sprites, tweenConfigs } = prepareScene();
     scene.updateAgents([builderAtDesk]);
     scene.updateAgents([{ ...builderAtDesk, zone: 'coffee' }]);
 
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(4);
-    expect(timerConfigs[0]).toMatchObject({ delay: 90, loop: true });
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-walk-left');
+    expect(sprites[1]?.play).toHaveBeenLastCalledWith('hair-short-walk-left');
     expect(tweenConfigs[0]).toMatchObject({ duration: 360 });
-    timerConfigs[0]?.callback();
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(5);
-    timerConfigs[0]?.callback();
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(6);
-    timerConfigs[0]?.callback();
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(7);
     tweenConfigs[0]?.onComplete?.();
-    expect(timers[0]?.remove).toHaveBeenCalledTimes(1);
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(1);
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-typing');
+    expect(sprites[1]?.play).toHaveBeenLastCalledWith('hair-short-typing');
   });
 
-  it('cleans up the timer and restores the stationary frame when motion is cancelled or the agent is removed', () => {
-    const { scene, sprites, timerConfigs, tweenConfigs, timers, tweens, containers } = prepareScene();
+  it('restores the status animation when motion is cancelled or the agent is removed', () => {
+    const { scene, sprites, tweenConfigs, tweens, containers } = prepareScene();
     scene.updateAgents([builderAtDesk]);
     scene.updateAgents([{ ...builderAtDesk, zone: 'coffee' }]);
     tweenConfigs[0]?.onStop?.();
-    expect(timers[0]?.remove).toHaveBeenCalledTimes(1);
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(1);
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-typing');
+    expect(sprites[1]?.play).toHaveBeenLastCalledWith('hair-short-typing');
 
     scene.updateAgents([{ ...builderAtDesk, zone: 'lounge' }]);
     scene.updateAgents([]);
-    expect(timers[1]?.remove).toHaveBeenCalledTimes(1);
     expect(tweens[1]?.stop).toHaveBeenCalledTimes(1);
     expect(containers[0]?.destroy).toHaveBeenCalledTimes(1);
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(1);
-    expect(timerConfigs).toHaveLength(2);
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-typing');
   });
 
   it('supersedes a retarget without allowing stale callbacks to clear the new walk', () => {
-    const { scene, sprites, timerConfigs, tweenConfigs, timers } = prepareScene();
+    const { scene, sprites, tweenConfigs } = prepareScene();
     scene.updateAgents([builderAtDesk]);
     scene.updateAgents([{ ...builderAtDesk, zone: 'coffee' }]);
     scene.updateAgents([{ ...builderAtDesk, status: 'paused', zone: 'lounge' }]);
 
-    expect(timers[0]?.remove).toHaveBeenCalledTimes(1);
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(4);
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-walk-right');
+    expect(sprites[1]?.play).toHaveBeenLastCalledWith('hair-short-walk-right');
     tweenConfigs[0]?.onComplete?.();
-    expect(timers[1]?.remove).not.toHaveBeenCalled();
-    timerConfigs[1]?.callback();
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(5);
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-walk-right');
     tweenConfigs[1]?.onComplete?.();
-    expect(timers[1]?.remove).toHaveBeenCalledTimes(1);
-    expect(sprites[0]?.setFrame).toHaveBeenLastCalledWith(3);
+    expect(sprites[0]?.play).toHaveBeenLastCalledWith('character-body-sleep');
   });
 });

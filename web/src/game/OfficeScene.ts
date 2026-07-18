@@ -1,6 +1,14 @@
 import Phaser from 'phaser';
 import { toCanvasPosition, zoneSeatCount } from './positions.js';
-import { agentPresentation, agentSprite, officeAssetManifest, officeCanvas } from './office-assets.js';
+import { officeAssetManifest, officeCanvas } from './office-assets.js';
+import {
+  animationStateForStatus,
+  directionForMovement,
+  hairAtlasForRole,
+  resolveCharacterAnimation,
+  validateCharacterManifest,
+} from './character-animation.js';
+import type { CharacterFacing, CharacterManifest } from './character-animation.js';
 import type { Zone } from '../../../server/protocol.js';
 
 export type OfficeAgent = {
@@ -14,15 +22,17 @@ export type OfficeAgent = {
 type AgentView = {
   container: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Sprite;
+  hair: Phaser.GameObjects.Sprite;
   outline: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
   marker: Phaser.GameObjects.Text;
   target: { x: number; y: number };
-  walkTimer: Phaser.Time.TimerEvent | null;
-  walkFrameIndex: number;
-  statusFrame: number;
   motionTween: Phaser.Tweens.Tween | null;
   motionGeneration: number;
+  hairTexture: string;
+  statusState: string;
+  activeAnimation: string | null;
+  lastFacing: CharacterFacing;
 };
 
 const zoneColors: Record<Zone, number> = {
@@ -41,25 +51,10 @@ const statusColors: Record<string, number> = {
   stopped: 0x64748b
 };
 
-// Stationary status frames precede the four walk-only frames in every sheet.
-const statusFrames: Record<string, number> = {
-  idle: 0,
-  stopped: 0,
-  working: 1,
-  blocked: 2,
-  error: 2,
-  paused: 3
-};
-
 const backgroundDepth = 0;
 const agentDepth = 2;
-
-function textureForRole(role: string | undefined, id: string): string {
-  const value = `${role ?? ''} ${id}`.toLowerCase();
-  if (value.includes('tester') || value.includes('test')) return 'agent-tester';
-  if (value.includes('documenter') || value.includes('docs') || value.includes('writer')) return 'agent-documenter';
-  return 'agent-builder';
-}
+const characterSheet = { frameWidth: 32, frameHeight: 32 };
+const characterHairTextures = ['hair-short', 'hair-swept', 'hair-curly'];
 
 function toHexColor(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
@@ -70,6 +65,7 @@ export class OfficeScene extends Phaser.Scene {
   private readonly views = new Map<string, AgentView>();
   private pendingAgents: OfficeAgent[] = [];
   private selectedAgentId: string | null = null;
+  private characterManifest: CharacterManifest | null = null;
 
   constructor(onAgentSelected: (agentId: string) => void) {
     super({ key: 'OfficeScene' });
@@ -78,9 +74,11 @@ export class OfficeScene extends Phaser.Scene {
 
   preload(): void {
     this.load.image('office-background', officeAssetManifest.background);
-    this.load.spritesheet('agent-builder', officeAssetManifest.agents.builder, agentSprite);
-    this.load.spritesheet('agent-tester', officeAssetManifest.agents.tester, agentSprite);
-    this.load.spritesheet('agent-documenter', officeAssetManifest.agents.documenter, agentSprite);
+    this.load.json('character-manifest', '/assets/characters/manifest.json');
+    this.load.spritesheet('character-body', '/assets/characters/body.png', characterSheet);
+    for (const hairTexture of characterHairTextures) {
+      this.load.spritesheet(hairTexture, `/assets/characters/${hairTexture}.png`, characterSheet);
+    }
     this.load.image('office-status-markers', officeAssetManifest.markers);
     this.load.image('office-props', officeAssetManifest.props);
     this.load.image('office-nameplates', officeAssetManifest.nameplates);
@@ -91,12 +89,14 @@ export class OfficeScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(backgroundDepth);
     this.drawOffice();
+    this.ensureCharacterAnimations();
     this.updateAgents(this.pendingAgents);
   }
 
   updateAgents(agents: OfficeAgent[]): void {
     this.pendingAgents = agents.map((agent) => ({ ...agent }));
     if (!this.add) return;
+    this.ensureCharacterAnimations();
 
     const activeIds = new Set(agents.map((agent) => agent.id));
     for (const [id, view] of this.views) {
@@ -134,8 +134,8 @@ export class OfficeScene extends Phaser.Scene {
     for (const agent of ordered) {
       const target = seatFor(agent);
       const color = statusColors[agent.status] ?? zoneColors[agent.zone];
-      const texture = textureForRole(agent.role, agent.id);
-      const frame = statusFrames[agent.status] ?? 0;
+      const hairTexture = hairAtlasForRole(agent.role);
+      const statusState = animationStateForStatus(agent.status);
       const existing = this.views.get(agent.id);
 
       if (!existing) {
@@ -143,10 +143,12 @@ export class OfficeScene extends Phaser.Scene {
           .setStrokeStyle(2, 0xfacc15, 1)
           .setFillStyle(0x000000, 0)
           .setVisible(this.selectedAgentId === agent.id);
-        const body = this.add.sprite(0, 0, texture, 0)
-          .setOrigin(0.5, 1)
-          .setScale(agentPresentation.scale)
-          .setFrame(frame);
+        const body = this.add.sprite(0, 0, 'character-body', 0)
+          .setOrigin(0.5, 0.875)
+          .setScale(2);
+        const hair = this.add.sprite(0, 0, hairTexture, 0)
+          .setOrigin(0.5, 0.875)
+          .setScale(2);
         const label = this.add.text(0, -122, agent.name, {
           color: '#e2e8f0',
           fontFamily: 'system-ui, sans-serif',
@@ -165,7 +167,7 @@ export class OfficeScene extends Phaser.Scene {
           align: 'center'
         }).setOrigin(0.5, 1);
         // Child order deliberately keeps the text UI above this agent's sprite.
-        const container = this.add.container(target.x, target.y, [outline, body, label, marker]);
+        const container = this.add.container(target.x, target.y, [outline, body, hair, label, marker]);
         container.setSize(96, 148).setInteractive({ useHandCursor: true }).setDepth(agentDepth);
         container.on('pointerup', () => this.onAgentSelected(agent.id));
         this.views.set(agent.id, {
@@ -174,18 +176,26 @@ export class OfficeScene extends Phaser.Scene {
           outline,
           label,
           marker,
+          hair,
           target,
-          walkTimer: null,
-          walkFrameIndex: 0,
-          statusFrame: frame,
           motionTween: null,
-          motionGeneration: 0
+          motionGeneration: 0,
+          hairTexture,
+          statusState,
+          activeAnimation: null,
+          lastFacing: 'down'
         });
+        this.playCharacterAnimation(this.views.get(agent.id)!, statusState);
       } else {
         const targetChanged = existing.target.x !== target.x || existing.target.y !== target.y;
-        existing.body.setTexture(texture);
-        existing.statusFrame = frame;
-        if (!existing.walkTimer) existing.body.setFrame(frame);
+        const hairChanged = existing.hairTexture !== hairTexture;
+        if (hairChanged) {
+          existing.hair.setTexture(hairTexture);
+          existing.hairTexture = hairTexture;
+          existing.activeAnimation = null;
+        }
+        existing.statusState = statusState;
+        if (!existing.motionTween) this.playCharacterAnimation(existing, statusState);
         existing.label.setText(agent.name);
         existing.marker.setText(agent.status.toUpperCase());
         existing.marker.setBackgroundColor(toHexColor(color));
@@ -202,20 +212,13 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   private startAgentMotion(view: AgentView, target: { x: number; y: number }): void {
-    // Retargeting first cancels the old timer/tween and restores the current status.
+    // Retargeting first cancels the old tween and restores the current status.
     this.stopAgentMotion(view);
+    const previousTarget = view.target;
     view.target = target;
     const motionGeneration = view.motionGeneration;
-    view.walkFrameIndex = 1;
-    view.body.setFrame(agentPresentation.walkFrames[0]);
-    view.walkTimer = this.time.addEvent({
-      delay: agentPresentation.frameDurationMs,
-      loop: true,
-      callback: () => {
-        view.body.setFrame(agentPresentation.walkFrames[view.walkFrameIndex]);
-        view.walkFrameIndex = (view.walkFrameIndex + 1) % agentPresentation.walkFrames.length;
-      }
-    });
+    view.lastFacing = directionForMovement(previousTarget, target, view.lastFacing);
+    this.playCharacterAnimation(view, 'moving', view.lastFacing);
     view.motionTween = this.tweens.add({
       targets: view.container,
       x: target.x,
@@ -233,16 +236,40 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   private stopAgentMotion(view: AgentView): void {
-    const timer = view.walkTimer;
     const tween = view.motionTween;
-    view.walkTimer = null;
     view.motionTween = null;
-    view.walkFrameIndex = 0;
     // Invalidate callbacks before stopping a Phaser tween, which can emit onStop.
     view.motionGeneration += 1;
-    timer?.remove();
     tween?.stop();
-    view.body.setFrame(view.statusFrame);
+    this.playCharacterAnimation(view, view.statusState);
+  }
+
+  private ensureCharacterAnimations(): void {
+    if (this.characterManifest) return;
+    const manifest = this.cache.json.get('character-manifest') as CharacterManifest;
+    const validationErrors = validateCharacterManifest(manifest);
+    if (validationErrors.length) throw new Error(`Invalid character manifest: ${validationErrors.join(' ')}`);
+    this.characterManifest = manifest;
+    for (const animation of manifest.animations) {
+      for (const texture of ['character-body', ...characterHairTextures]) {
+        const key = `${texture}-${animation.name}`;
+        if (this.anims.exists(key)) continue;
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers(texture, { start: animation.start, end: animation.start + animation.frames - 1 }),
+          frameRate: animation.fps,
+          repeat: animation.loop ? -1 : 0
+        });
+      }
+    }
+  }
+
+  private playCharacterAnimation(view: AgentView, state: string, facing = view.lastFacing): void {
+    const animation = resolveCharacterAnimation(this.characterManifest!, state, facing);
+    if (view.activeAnimation === animation.name) return;
+    view.activeAnimation = animation.name;
+    view.body.play(`character-body-${animation.name}`);
+    view.hair.play(`${view.hairTexture}-${animation.name}`);
   }
 
   private drawOffice(): void {
